@@ -1,0 +1,26 @@
+{
+  "name": "kart-racer",
+  "version": "0.1.0",
+  "description": "An online kart racer to play with friends in the browser",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vm-720/kart-racer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vm-720/kart-racer/issues"
+  },
+  "homepage": "https://github.com/vm-720/kart-racer#readme",
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.11"
+  },
+  "private": true,
+  "type": "module"
+}

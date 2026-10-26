@@ -2,17 +2,47 @@ import * as THREE from 'three';
 import { Track } from '../track.js';
 import { flagTexture, grassTexture, stoneTexture, checkerTexture } from '../textures.js';
 
-// Castle Cloverleaf: a four-leaf loop wrapped around a storybook castle.
+// Castle Cloverleaf: a technical circuit around a storybook castle. Long straights,
+// two hairpins, a run of esses through the middle, and a hill that climbs through
+// the castle's gatehouse.
 
-const R = 130; // average radius of the loop
-const LOBES = 4;
-const LOBE_DEPTH = 0.22;
+// Hand-placed control points as [x, z, height]. The loop runs from the start line
+// east along the bottom straight, then counter-clockwise around the map.
+const CONTROL = [
+  [-150, -220], [60, -220], [150, -220], // home straight
+  [215, -200], [235, -145], [200, -105], // east hairpin
+  [130, -110], [70, -95], [45, -55], [75, -15], [85, 30], // esses
+  [100, 100], [170, 140], [240, 185], [240, 245], [180, 268], // north-east sweeper
+  [40, 255, 4], [-80, 252, 10], [-170, 242, 4], // hill through the gatehouse
+  [-222, 205], [-200, 150], [-140, 145], // north-west hairpin
+  [-100, 108], [-125, 62], [-200, 40], // chicane
+  [-238, -10], [-228, -90], [-208, -180], [-178, -215], // west straight and final corner
+];
+export const CASTLE_POS = new THREE.Vector3(-90, 0, -80);
+const GATEHOUSE_AT = new THREE.Vector3(-80, 0, 252);
 
-function centerLine(u) {
-  const a = u * Math.PI * 2;
-  const r = R * (1 + LOBE_DEPTH * Math.cos(LOBES * a));
-  return new THREE.Vector3(r * Math.cos(a), 0, r * Math.sin(a));
+// Smooth the spline so no corner is tighter than the karts can take.
+function buildCenterLine() {
+  const curve = new THREE.CatmullRomCurve3(
+    CONTROL.map(([x, z, y = 0]) => new THREE.Vector3(x, y, z)),
+    true,
+    'centripetal',
+  );
+  const N = 4000;
+  let pts = [];
+  for (let i = 0; i < N; i++) pts.push(curve.getPointAt(i / N));
+  for (let k = 0; k < 30; k++) {
+    pts = pts.map((p, i) =>
+      p.clone().multiplyScalar(0.5).addScaledVector(pts[(i + N - 8) % N], 0.25).addScaledVector(pts[(i + 8) % N], 0.25),
+    );
+  }
+  return (u) => {
+    const f = (u % 1) * N;
+    const i = Math.floor(f);
+    return pts[i % N].clone().lerp(pts[(i + 1) % N], f - i);
+  };
 }
+const centerLine = buildCenterLine();
 
 // Small seeded random so the scenery is identical for every player.
 function rng(seed) {
@@ -26,14 +56,15 @@ export function buildCastleTrack(gradientMap) {
   const track = new Track({
     name: 'Castle Cloverleaf',
     centerLine,
-    width: 20,
+    width: 22,
     runoff: 7,
     wallHeight: 1.4,
     laps: 3,
     boostPads: [
-      { at: 0.0625 + 0.25, offset: 4 },
-      { at: 0.0625 + 0.75, offset: -4 },
-      { at: 0.0625 + 0.5, offset: 0 },
+      { near: new THREE.Vector3(40, 0, -220), offset: 0 },
+      { near: new THREE.Vector3(150, 0, -110), offset: -4 },
+      { near: new THREE.Vector3(92, 0, 65), offset: 3 },
+      { near: new THREE.Vector3(-236, 0, -40), offset: 4 },
     ],
   });
 
@@ -44,17 +75,27 @@ export function buildCastleTrack(gradientMap) {
   // Ground
   const grass = grassTexture();
   grass.repeat.set(90, 90);
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(1200, 64), new THREE.MeshLambertMaterial({ map: grass }));
+  const ground = new THREE.Mesh(
+    new THREE.CircleGeometry(1200, 64),
+    new THREE.MeshLambertMaterial({ map: grass, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 4 }),
+  );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
 
-  scene.add(buildCastle(toon));
+  const castle = buildCastle(toon);
+  castle.scale.setScalar(1.8);
+  castle.position.copy(CASTLE_POS);
+  castle.rotation.y = Math.PI / 2; // gate faces the home straight
+  scene.add(castle);
   scene.add(buildStartGantry(track, toon));
+  scene.add(buildGatehouse(track, toon, GATEHOUSE_AT));
+  scene.add(buildPennants(track, toon));
+  scene.add(buildGrandstand(track, toon));
   scene.add(buildTrees(track, toon));
   scene.add(buildHills(toon));
   scene.add(buildClouds());
-  return { track, scene, name: 'Castle Cloverleaf', fog: { color: '#cfe9ff', near: 250, far: 900 } };
+  return { track, scene, name: 'Castle Cloverleaf', focus: CASTLE_POS, fog: { color: '#cfe9ff', near: 320, far: 1400 } };
 }
 
 function crenellations(toon, width, depth, y, count, size = 1.6) {
@@ -248,10 +289,11 @@ function buildStartGantry(track, toon) {
 function buildTrees(track, toon) {
   const rand = rng(7);
   const spots = [];
-  while (spots.length < 260) {
+  while (spots.length < 420) {
     const a = rand() * Math.PI * 2;
-    const r = 55 + rand() * 330;
+    const r = 30 + rand() * 520;
     const p = new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
+    if (p.distanceTo(CASTLE_POS) < 115) continue;
     const q = track.query(p);
     if (Math.abs(q.offset) < track.wallOffset + 5) continue;
     spots.push(p);
@@ -289,8 +331,8 @@ function buildHills(toon) {
   const colors = ['#5cbf55', '#4aa84a', '#6fcf5c'];
   for (let i = 0; i < 26; i++) {
     const a = (i / 26) * Math.PI * 2 + rand() * 0.2;
-    const r = 520 + rand() * 160;
-    const size = 70 + rand() * 90;
+    const r = 760 + rand() * 200;
+    const size = 90 + rand() * 120;
     const hill = new THREE.Mesh(new THREE.SphereGeometry(size, 16, 10), toon(colors[i % 3]));
     hill.scale.y = 0.45 + rand() * 0.3;
     hill.position.set(Math.cos(a) * r, -size * 0.15, Math.sin(a) * r);
@@ -314,12 +356,138 @@ function buildClouds() {
       cloud.add(p);
     }
     const a = rand() * Math.PI * 2;
-    const r = 250 + rand() * 450;
+    const r = 350 + rand() * 600;
     cloud.position.set(Math.cos(a) * r, 90 + rand() * 70, Math.sin(a) * r);
     cloud.rotation.y = rand() * Math.PI;
     cloud.userData.drift = 1 + rand() * 2;
     g.add(cloud);
   }
   g.name = 'clouds';
+  return g;
+}
+
+// A stone gatehouse the road climbs through at the top of the hill.
+function buildGatehouse(track, toon, near) {
+  const g = new THREE.Group();
+  const q = track.query(near);
+  const c = track.point(q.index);
+  const t = track.tangents[q.index];
+  const span = track.wallOffset + 3;
+  const top = c.y + 13;
+  const stone = stoneTexture();
+  stone.repeat.set(2, 4);
+  const stoneMat = toon('#ffffff', { map: stone });
+  for (const side of [-1, 1]) {
+    const tw = tower(toon, 4.5, top, '#3f7bff', side < 0 ? '#e8433f' : '#3f7bff');
+    tw.position.set(0, 0, side * (span + 3));
+    g.add(tw);
+  }
+  // The arch: a thick span with a rounded underside and battlements on top
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(6, 4, span * 2 + 2), stoneMat);
+  beam.position.y = top - 2;
+  beam.castShadow = true;
+  g.add(beam);
+  const g2 = crenellations(toon, 6, span * 2 + 2, top, 9);
+  g.add(g2);
+  const banner = new THREE.Mesh(
+    new THREE.PlaneGeometry(5, 3.4),
+    toon('#ffffff', { map: flagTexture('#e8433f'), side: THREE.DoubleSide }),
+  );
+  banner.position.set(3.05, top - 2, 0);
+  banner.rotation.y = Math.PI / 2;
+  g.add(banner);
+  const back = banner.clone();
+  back.position.x = -3.05;
+  g.add(back);
+  g.position.set(c.x, 0, c.z);
+  g.rotation.y = Math.atan2(t.x, t.z) + Math.PI / 2;
+  return g;
+}
+
+// Little pennant flags on poles along both walls.
+function buildPennants(track, toon) {
+  const every = Math.round(40 / track.spacing);
+  const spots = [];
+  for (let i = 0; i < track.sampleCount; i += every) {
+    for (const side of [-1, 1]) {
+      const c = track.point(i);
+      const s = track.sides[i];
+      const off = side * (track.wallOffset + 0.6);
+      spots.push({ x: c.x + s.x * off, y: c.y + track.wallHeight, z: c.z + s.z * off, t: track.tangents[i] });
+    }
+  }
+  const poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.1, 0.1, 4, 5), toon('#ffffff'), spots.length);
+  const flagGeo = new THREE.BufferGeometry();
+  flagGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, -1.4, 0, 0, -0.7, 2.2], 3));
+  flagGeo.computeVertexNormals();
+  const flags = new THREE.InstancedMesh(flagGeo, new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), spots.length);
+  const colors = ['#e8433f', '#3f7bff', '#ffc531'].map((c) => new THREE.Color(c));
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const one = new THREE.Vector3(1, 1, 1);
+  spots.forEach((p, i) => {
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(p.t.x, p.t.z) + Math.PI);
+    m.compose(new THREE.Vector3(p.x, p.y + 2, p.z), q, one);
+    poles.setMatrixAt(i, m);
+    m.compose(new THREE.Vector3(p.x, p.y + 4, p.z), q, one);
+    flags.setMatrixAt(i, m);
+    flags.setColorAt(i, colors[i % 3]);
+  });
+  const g = new THREE.Group();
+  poles.castShadow = true;
+  g.add(poles, flags);
+  return g;
+}
+
+// Bleachers full of cheering spectators beside the home straight.
+function buildGrandstand(track, toon) {
+  const g = new THREE.Group();
+  const i = track.sampleCount - Math.round(60 / track.spacing);
+  const c = track.point(i);
+  const t = track.tangents[i];
+  const s = track.sides[i];
+  const length = 70;
+  const steps = 5;
+  const stepMat = toon('#cfc8dc');
+  for (let k = 0; k < steps; k++) {
+    const step = new THREE.Mesh(new THREE.BoxGeometry(length, 1.2 * (k + 1), 2.4), stepMat);
+    step.position.set(0, 0.6 * (k + 1), 3 + k * 2.4);
+    step.castShadow = true;
+    step.receiveShadow = true;
+    g.add(step);
+  }
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(length + 4, 0.6, 14), toon('#e8433f'));
+  roof.position.set(0, 11, 7);
+  roof.rotation.x = -0.12;
+  roof.castShadow = true;
+  g.add(roof);
+  for (const x of [-length / 2, 0, length / 2]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 11, 6), toon('#ffffff'));
+    post.position.set(x, 5.5, 14);
+    g.add(post);
+  }
+  // Spectators as simple heads-and-bodies in bright shirts
+  const rand = rng(5);
+  const crowd = new THREE.InstancedMesh(new THREE.CapsuleGeometry(0.35, 0.5, 2, 6), toon('#ffffff'), steps * 30);
+  const shirts = ['#e8433f', '#3f7bff', '#ffc531', '#46b85e', '#ff8a1f', '#c35cff'].map((x) => new THREE.Color(x));
+  const m = new THREE.Matrix4();
+  let n = 0;
+  for (let k = 0; k < steps; k++) {
+    for (let j = 0; j < 30; j++) {
+      if (rand() < 0.15) continue;
+      const x = -length / 2 + 2 + j * ((length - 4) / 29) + (rand() - 0.5);
+      m.makeTranslation(x, 1.2 * (k + 1) + 0.7, 3 + k * 2.4);
+      crowd.setMatrixAt(n, m);
+      crowd.setColorAt(n, shirts[(rand() * shirts.length) | 0]);
+      n++;
+    }
+  }
+  crowd.count = n;
+  crowd.name = 'crowd';
+  g.add(crowd);
+  // Face the track from outside the right-hand wall
+  const off = track.wallOffset + 4;
+  g.position.set(c.x + s.x * off, 0, c.z + s.z * off);
+  g.rotation.y = Math.atan2(s.x, s.z);
   return g;
 }

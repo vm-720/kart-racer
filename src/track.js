@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { asphaltTexture, boostTexture, checkerTexture, stoneTexture } from './textures.js';
+import { asphaltTexture, boostTexture, checkerTexture, grassTexture, stoneTexture } from './textures.js';
 
 // A track is a closed centre line sampled into evenly spaced points.
 // Everything else (road mesh, walls, lap progress, collisions) is derived from those samples,
@@ -22,6 +22,7 @@ export class Track {
     this.boostPads = boostPads.map((p) => this.#makeBoostPad(p));
     this.#buildRoad();
     this.#buildCurbs();
+    this.#buildRunoff();
     this.#buildWalls();
     this.#buildStartLine();
   }
@@ -47,8 +48,11 @@ export class Track {
 
     this.tangents = [];
     this.sides = [];
+    this.slopes = []; // rise over run along the direction of travel
     for (let i = 0; i < SAMPLES; i++) {
-      const t = this.point(i + 1).clone().sub(this.point(i - 1)).setY(0).normalize();
+      const d = this.point(i + 1).clone().sub(this.point(i - 1));
+      this.slopes.push(d.y / Math.hypot(d.x, d.z));
+      const t = d.setY(0).normalize();
       this.tangents.push(t);
       this.sides.push(new THREE.Vector3(-t.z, 0, t.x)); // points to the driver's right
     }
@@ -82,7 +86,7 @@ export class Track {
     const c = this.points[best];
     const side = this.sides[best];
     const offset = (pos.x - c.x) * side.x + (pos.z - c.z) * side.z;
-    return { index: best, offset, center: c, side, tangent: this.tangents[best] };
+    return { index: best, offset, center: c, side, tangent: this.tangents[best], height: c.y, slope: this.slopes[best] };
   }
 
   // Start grid: two columns, staggered, behind the line.
@@ -106,7 +110,7 @@ export class Track {
     for (let i = 0; i <= SAMPLES; i++) {
       const c = this.point(i);
       const s = this.sides[i % SAMPLES];
-      pos.push(c.x + s.x * offA, y, c.z + s.z * offA, c.x + s.x * offB, y, c.z + s.z * offB);
+      pos.push(c.x + s.x * offA, c.y + y, c.z + s.z * offA, c.x + s.x * offB, c.y + y, c.z + s.z * offB);
       uv.push(0, v, 1, v);
       if (colorAt) {
         const k = colorAt(i);
@@ -156,6 +160,20 @@ export class Track {
     }
   }
 
+  // Grass between the curbs and the walls (follows the road's height on hills)
+  #buildRunoff() {
+    const tex = grassTexture();
+    const mat = new THREE.MeshLambertMaterial({ map: tex });
+    for (const sign of [-1, 1]) {
+      const a = sign * (this.halfWidth + 1.6);
+      const b = sign * this.wallOffset;
+      const geo = this.#ribbon(a, b, 0.03, { vScale: 1 / 12 });
+      const strip = new THREE.Mesh(geo, mat);
+      strip.receiveShadow = true;
+      this.group.add(strip);
+    }
+  }
+
   #buildWalls() {
     const tex = stoneTexture();
     const h = this.wallHeight;
@@ -173,8 +191,10 @@ export class Track {
         const x2 = c.x + s.x * (off + sign * 1.2);
         const z2 = c.z + s.z * (off + sign * 1.2);
         // inner face bottom/top, outer top
-        pos.push(x, 0, z, x, h, z, x2, h, z2, x2, 0, z2);
-        uv.push(u, 0, u, h / 4, u, h / 4 + 0.3, u, 0);
+        // Walls reach down to the ground so raised sections look like embankments
+        const top = c.y + h;
+        pos.push(x, 0, z, x, top, z, x2, top, z2, x2, 0, z2);
+        uv.push(u, 0, u, top / 4, u, top / 4 + 0.3, u, 0);
         u += this.spacing / 4;
         if (i < SAMPLES) {
           const a = i * 4;
@@ -208,20 +228,21 @@ export class Track {
     const t = this.tangents[0];
     line.rotation.x = -Math.PI / 2;
     line.rotation.z = Math.atan2(t.x, t.z);
-    line.position.set(c.x, 0.05, c.z);
+    line.position.set(c.x, c.y + 0.05, c.z);
     line.receiveShadow = true;
     this.group.add(line);
   }
 
-  #makeBoostPad({ at, offset = 0, length = 9, width = 6 }) {
-    const i = Math.round(at * SAMPLES);
+  // Place a pad by fraction of the lap (`at`) or by the nearest point to a position (`near`).
+  #makeBoostPad({ at, near, offset = 0, length = 9, width = 6 }) {
+    const i = near ? this.query(near).index : Math.round(at * SAMPLES);
     const c = this.point(i).clone().addScaledVector(this.sides[i], offset);
     const t = this.tangents[i];
     const mat = new THREE.MeshBasicMaterial({ map: boostTexture() });
     const pad = new THREE.Mesh(new THREE.PlaneGeometry(width, length), mat);
     pad.rotation.x = -Math.PI / 2;
     pad.rotation.z = Math.atan2(t.x, t.z) + Math.PI;
-    pad.position.set(c.x, 0.07, c.z);
+    pad.position.set(c.x, c.y + 0.07, c.z);
     this.group.add(pad);
     return { index: i, offset, halfLength: length / 2, halfWidth: width / 2, mesh: pad };
   }

@@ -21,7 +21,7 @@ $('app').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = skyTexture();
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 2500);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.5, 2500);
 
 scene.add(new THREE.HemisphereLight('#cfe8ff', '#6a9a4a', 1.4));
 const sun = new THREE.DirectionalLight('#fff3dc', 2.4);
@@ -113,12 +113,12 @@ function placeCamera(blend) {
   const back = 7.5 + Math.min(2, Math.max(0, s.speed) / 15);
   const h = Math.sin(camHeading);
   const c = Math.cos(camHeading);
-  const target = new THREE.Vector3(s.x - h * back, 3.3 + s.y * 0.5, s.z - c * back);
+  const target = new THREE.Vector3(s.x - h * back, s.ground + 3.3 + s.y * 0.5, s.z - c * back);
   camPos.lerp(target, blend);
   camera.position.copy(camPos);
-  lookAt.set(s.x + h * 4, 1.4 + s.y * 0.6, s.z + c * 4);
+  lookAt.set(s.x + h * 4, s.ground + 1.4 + s.y * 0.6, s.z + c * 4);
   camera.lookAt(lookAt);
-  const fov = 68 + (s.boost > 0 ? 10 : 0) + Math.max(0, s.speed) * 0.12;
+  const fov = 66 + (s.boost > 0 ? 10 : 0) + Math.max(0, s.speed) * 0.12;
   camera.fov += (fov - camera.fov) * Math.min(1, blend * 1.5);
   camera.updateProjectionMatrix();
 }
@@ -318,8 +318,9 @@ function frame(now) {
   } else {
     // Slow orbit around the castle behind the menu
     const a = elapsed * 0.08;
-    camera.position.set(Math.cos(a) * 200, 70, Math.sin(a) * 200);
-    camera.lookAt(0, 10, 0);
+    const f = level.focus;
+    camera.position.set(f.x + Math.cos(a) * 260, 110, f.z + Math.sin(a) * 260);
+    camera.lookAt(f.x, 20, f.z);
   }
 
   if (toastTimer > 0 && (toastTimer -= dt) <= 0) $('toast').classList.remove('show');

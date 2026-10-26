@@ -2,9 +2,9 @@
 // on every player's machine (and on a server) once online races arrive.
 
 export const TUNING = {
-  maxSpeed: 33, // m/s on road (~119 km/h)
-  offroadMaxSpeed: 15,
-  accel: 26,
+  maxSpeed: 42, // m/s on road (~151 km/h)
+  offroadMaxSpeed: 18,
+  accel: 32,
   brake: 45,
   reverseMax: 10,
   reverseAccel: 18,
@@ -16,7 +16,8 @@ export const TUNING = {
   hopSpeed: 5.5,
   gravity: 26,
   boostSpeed: 1.35, // multiplier on maxSpeed
-  boostAccel: 70,
+  boostAccel: 80,
+  slopeGravity: 0.6, // how much hills slow you down (and speed you up going down)
   driftLevels: [0.9, 2.0, 3.2], // seconds of charge for blue, orange, purple sparks
   driftBoosts: [0.7, 1.2, 1.8], // boost seconds awarded per level
   padBoost: 1.3,
@@ -27,7 +28,9 @@ export function createKartState({ position, heading, index }) {
   return {
     x: position.x,
     z: position.z,
-    y: 0,
+    y: 0, // hop height above the road
+    ground: position.y, // road height under the kart
+    slope: 0,
     vx: 0,
     vz: 0,
     vy: 0,
@@ -140,6 +143,11 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
     vF = Math.abs(vF) < drag ? 0 : vF - Math.sign(vF) * drag;
   }
   if (vF > maxSpeed) vF = Math.max(maxSpeed, vF - (s.offroad ? 40 : 12) * dt);
+  if (s.grounded) {
+    // Gravity along the slope, measured in the direction the kart is facing
+    const facing = sinH * q.tangent.x + cosH * q.tangent.z;
+    vF -= T.gravity * T.slopeGravity * q.slope * facing * dt;
+  }
 
   // Steering
   if (s.drifting) {
@@ -180,6 +188,8 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
   }
   s.trackIndex = q2.index;
   s.offset = q2.offset;
+  s.ground = q2.height;
+  s.slope = q2.slope;
   s.speed = s.vx * Math.sin(s.heading) + s.vz * Math.cos(s.heading);
 
   updateLap(s, track);
@@ -208,6 +218,7 @@ export function respawn(s, track) {
   const t = track.tangents[i];
   s.x = c.x;
   s.z = c.z;
+  s.ground = c.y;
   s.y = 2;
   s.vx = s.vz = s.vy = 0;
   s.heading = Math.atan2(t.x, t.z);

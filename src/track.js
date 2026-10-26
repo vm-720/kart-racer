@@ -42,7 +42,10 @@ export class Track {
       const target = (i / SAMPLES) * this.length;
       while (cum[j + 1] < target) j++;
       const t = (target - cum[j]) / (cum[j + 1] - cum[j] || 1);
-      this.points.push(dense[j].clone().lerp(dense[j + 1], t));
+      const p = dense[j].clone().lerp(dense[j + 1], t);
+      // Never let the road dip below the ground, or grass shows through it
+      p.y = Math.max(0, p.y);
+      this.points.push(p);
     }
     this.spacing = this.length / SAMPLES;
 
@@ -139,7 +142,7 @@ export class Track {
 
   #buildRoad() {
     const tex = asphaltTexture();
-    const geo = this.#ribbon(-this.halfWidth, this.halfWidth, 0.02, { vScale: 1 / this.width });
+    const geo = this.#ribbon(-this.halfWidth, this.halfWidth, 0.06, { vScale: 1 / this.width });
     const road = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex }));
     road.receiveShadow = true;
     this.group.add(road);
@@ -154,7 +157,7 @@ export class Track {
     for (const sign of [-1, 1]) {
       const a = sign * this.halfWidth;
       const b = sign * (this.halfWidth + 1.6);
-      const curb = new THREE.Mesh(this.#ribbon(a, b, 0.06, { colorAt }), mat);
+      const curb = new THREE.Mesh(this.#ribbon(a, b, 0.1, { colorAt }), mat);
       curb.receiveShadow = true;
       this.group.add(curb);
     }
@@ -167,7 +170,7 @@ export class Track {
     for (const sign of [-1, 1]) {
       const a = sign * (this.halfWidth + 1.6);
       const b = sign * this.wallOffset;
-      const geo = this.#ribbon(a, b, 0.03, { vScale: 1 / 12 });
+      const geo = this.#ribbon(a, b, 0.05, { vScale: 1 / 12 });
       const strip = new THREE.Mesh(geo, mat);
       strip.receiveShadow = true;
       this.group.add(strip);
@@ -228,7 +231,7 @@ export class Track {
     const t = this.tangents[0];
     line.rotation.x = -Math.PI / 2;
     line.rotation.z = Math.atan2(t.x, t.z);
-    line.position.set(c.x, c.y + 0.05, c.z);
+    line.position.set(c.x, c.y + 0.1, c.z);
     line.receiveShadow = true;
     this.group.add(line);
   }
@@ -242,7 +245,7 @@ export class Track {
     const pad = new THREE.Mesh(new THREE.PlaneGeometry(width, length), mat);
     pad.rotation.x = -Math.PI / 2;
     pad.rotation.z = Math.atan2(t.x, t.z) + Math.PI;
-    pad.position.set(c.x, c.y + 0.07, c.z);
+    pad.position.set(c.x, c.y + 0.12, c.z);
     this.group.add(pad);
     return { index: i, offset, halfLength: length / 2, halfWidth: width / 2, mesh: pad };
   }

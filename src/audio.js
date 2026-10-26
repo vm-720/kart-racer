@@ -1,0 +1,100 @@
+// Sound: a synthesized engine hum and effect blips, plus the race soundtrack from public/music.
+
+const SONGS = ['aware', 'more', 'lights', 'legacy', 'hold', 'falling', 'drank'];
+const MUSIC_VOLUME = 0.35;
+
+export class Audio {
+  constructor() {
+    this.ctx = null;
+    this.muted = false;
+    this.music = new window.Audio();
+    this.music.volume = MUSIC_VOLUME;
+    this.music.addEventListener('ended', () => this.nextSong());
+    // Shuffle once so each session plays the songs in a fresh order
+    this.playlist = [...SONGS].sort(() => Math.random() - 0.5);
+    this.songIndex = -1;
+  }
+
+  // Starts the next song in the playlist and returns its name.
+  nextSong() {
+    this.songIndex = (this.songIndex + 1) % this.playlist.length;
+    const name = this.playlist[this.songIndex];
+    this.music.src = `${import.meta.env.BASE_URL}music/${name}.mp3`;
+    this.music.muted = this.muted;
+    this.music.play().catch(() => {});
+    return name;
+  }
+
+  // Browsers only allow audio after a click or key press, so call this from the start button.
+  start() {
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    this.ctx = new AC();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.5;
+    this.master.connect(this.ctx.destination);
+
+    this.engine = this.ctx.createOscillator();
+    this.engine.type = 'sawtooth';
+    this.engine2 = this.ctx.createOscillator();
+    this.engine2.type = 'square';
+    this.engineFilter = this.ctx.createBiquadFilter();
+    this.engineFilter.type = 'lowpass';
+    this.engineFilter.frequency.value = 600;
+    this.engineGain = this.ctx.createGain();
+    this.engineGain.gain.value = 0.06;
+    this.engine.connect(this.engineFilter);
+    this.engine2.connect(this.engineFilter);
+    this.engineFilter.connect(this.engineGain).connect(this.master);
+    this.engine.start();
+    this.engine2.start();
+  }
+
+  toggleMute() {
+    this.muted = !this.muted;
+    if (this.master) this.master.gain.value = this.muted ? 0 : 0.5;
+    this.music.muted = this.muted;
+    return this.muted;
+  }
+
+  setEngine(speed, boosting) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const f = 55 + Math.abs(speed) * 4.2 + (boosting ? 40 : 0);
+    this.engine.frequency.setTargetAtTime(f, t, 0.05);
+    this.engine2.frequency.setTargetAtTime(f * 0.5, t, 0.05);
+    this.engineFilter.frequency.setTargetAtTime(400 + Math.abs(speed) * 30, t, 0.1);
+  }
+
+  #tone(freq, dur, { type = 'square', vol = 0.15, slide = 0, delay = 0 } = {}) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + delay;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(freq * slide, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+
+  play(name) {
+    switch (name) {
+      case 'hop': return this.#tone(300, 0.12, { slide: 1.8, vol: 0.08 });
+      case 'boost': return this.#tone(180, 0.5, { type: 'sawtooth', slide: 3, vol: 0.12 });
+      case 'bump': return this.#tone(90, 0.15, { type: 'triangle', vol: 0.25 });
+      case 'count': return this.#tone(440, 0.25, { vol: 0.15 });
+      case 'go': return this.#tone(880, 0.6, { vol: 0.15 });
+      case 'lap':
+        this.#tone(660, 0.15, { vol: 0.12 });
+        return this.#tone(990, 0.3, { vol: 0.12, delay: 0.15 });
+      case 'finish':
+        [523, 659, 784, 1047].forEach((f, i) => this.#tone(f, 0.35, { vol: 0.12, delay: i * 0.14 }));
+        return;
+    }
+  }
+}

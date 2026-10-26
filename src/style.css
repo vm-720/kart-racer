@@ -1,0 +1,133 @@
+@import url('https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800&display=swap');
+
+:root {
+  --ink: #1d1b3a;
+  --cream: #fff8e7;
+  --red: #e8433f;
+  --gold: #ffc531;
+  --blue: #3fb6ff;
+  --orange: #ff8a1f;
+  --purple: #c35cff;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #87c8ff;
+  font-family: 'Nunito', system-ui, sans-serif;
+  color: var(--cream);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+#app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+.hidden { display: none !important; }
+
+/* HUD */
+#hud { position: fixed; inset: 0; pointer-events: none; }
+
+.hud-top-left { position: absolute; top: 16px; left: 18px; text-shadow: 0 3px 0 var(--ink); }
+.lap { font-family: 'Lilita One', sans-serif; font-size: 44px; letter-spacing: 1px; line-height: 1; }
+.lap .dim { opacity: 0.75; font-size: 30px; }
+.time { font-family: 'Lilita One', sans-serif; font-size: 26px; margin-top: 4px; }
+.laps { font-size: 15px; font-weight: 800; margin-top: 6px; opacity: 0.95; }
+.laps div.best { color: var(--gold); }
+
+#minimap {
+  position: absolute; top: 14px; right: 14px; width: 160px; height: 160px;
+  background: rgba(29, 27, 58, 0.35); border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.6);
+}
+
+.hud-bottom-right { position: absolute; right: 22px; bottom: 20px; text-align: right; text-shadow: 0 3px 0 var(--ink); }
+.speed { font-family: 'Lilita One', sans-serif; font-size: 54px; line-height: 1; }
+.speed small { font-size: 18px; margin-left: 4px; }
+.drift-meter {
+  width: 170px; height: 12px; margin-top: 8px; margin-left: auto;
+  background: rgba(29, 27, 58, 0.55); border-radius: 8px; overflow: hidden; border: 2px solid rgba(255,255,255,0.7);
+}
+#drift-fill { height: 100%; width: 0%; background: var(--blue); transition: background 0.15s; }
+
+#countdown {
+  position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%);
+  font-family: 'Lilita One', sans-serif; font-size: 150px; color: var(--gold);
+  text-shadow: 0 8px 0 var(--ink), 0 0 30px rgba(0,0,0,0.2);
+}
+#countdown.pop { animation: pop 0.5s ease-out; }
+@keyframes pop { from { transform: translate(-50%, -50%) scale(1.6); opacity: 0.2; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+
+#toast {
+  position: absolute; top: 20%; left: 50%; transform: translateX(-50%);
+  font-family: 'Lilita One', sans-serif; font-size: 40px; text-shadow: 0 4px 0 var(--ink);
+  opacity: 0; transition: opacity 0.3s;
+}
+#toast.show { opacity: 1; }
+
+#now-playing {
+  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+  font-weight: 800; font-size: 16px; padding: 6px 16px; border-radius: 20px;
+  background: rgba(29, 27, 58, 0.55); opacity: 0; transition: opacity 0.4s;
+}
+#now-playing.show { opacity: 1; }
+
+/* Menus */
+.overlay {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: radial-gradient(ellipse at center, rgba(29,27,58,0.35), rgba(29,27,58,0.75));
+}
+.panel {
+  background: var(--cream); color: var(--ink); border-radius: 26px; padding: 30px 34px; max-width: 460px; width: 100%;
+  box-shadow: 0 10px 0 var(--ink), 0 20px 50px rgba(0,0,0,0.3); text-align: center; border: 4px solid var(--ink);
+}
+.panel h1 { font-family: 'Lilita One', sans-serif; font-size: 58px; margin: 0; line-height: 1; color: var(--red); }
+.panel h1 span { color: var(--gold); -webkit-text-stroke: 2px var(--ink); }
+.sub { margin: 6px 0 20px; font-weight: 800; opacity: 0.7; }
+button.big {
+  font-family: 'Lilita One', sans-serif; font-size: 28px; padding: 12px 40px; border-radius: 18px; cursor: pointer;
+  background: var(--red); color: white; border: 4px solid var(--ink); box-shadow: 0 6px 0 var(--ink);
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+button.big:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--ink); }
+.controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; text-align: left; margin: 22px 0 10px; font-size: 14px; font-weight: 800; }
+kbd {
+  display: inline-block; min-width: 22px; padding: 1px 6px; margin-right: 3px; border-radius: 6px;
+  background: white; border: 2px solid var(--ink); border-bottom-width: 4px; font-family: inherit; font-size: 12px; text-align: center;
+}
+.tip { font-size: 14px; margin: 8px 0 0; }
+.blue { color: #1d8fd8; } .orange { color: var(--orange); } .purple { color: #9a2fd6; }
+
+#results-body { margin: 18px 0 22px; font-size: 18px; font-weight: 800; }
+#results-body .total { font-family: 'Lilita One', sans-serif; font-size: 40px; color: var(--red); }
+#results-body .row { display: flex; justify-content: space-between; max-width: 220px; margin: 4px auto; }
+#results-body .row.best { color: #c78b00; }
+
+/* Touch controls */
+#touch { position: fixed; inset: auto 0 0 0; height: 160px; display: flex; justify-content: space-between; padding: 18px; pointer-events: none; }
+#touch button {
+  pointer-events: auto; width: 76px; height: 76px; border-radius: 50%; margin: 0 6px; font-size: 26px;
+  border: 3px solid rgba(255,255,255,0.8); background: rgba(29,27,58,0.45); color: white; font-family: 'Lilita One', sans-serif;
+}
+#touch button.small { width: 64px; height: 64px; font-size: 13px; align-self: flex-end; }
+#touch button.gas { width: 92px; height: 92px; background: rgba(232, 67, 63, 0.7); }
+#touch button.on { background: rgba(255, 197, 49, 0.8); }
+.touch-left, .touch-right { display: flex; align-items: flex-end; }
+
+@media (max-width: 640px) {
+  .lap { font-size: 32px; } .lap .dim { font-size: 22px; } .time { font-size: 20px; }
+  #minimap { width: 110px; height: 110px; }
+  .hud-bottom-right { bottom: 170px; }
+  .speed { font-size: 38px; }
+  #countdown { font-size: 100px; }
+  .panel { padding: 22px 18px; } .panel h1 { font-size: 44px; }
+  .controls { grid-template-columns: 1fr; }
+}
+
+/* Keep the speedometer clear of the on-screen buttons on phones and tablets */
+@media (pointer: coarse) {
+  .hud-bottom-right { bottom: auto; top: 50%; transform: translateY(-50%); }
+  #minimap { width: 120px; height: 120px; }
+}

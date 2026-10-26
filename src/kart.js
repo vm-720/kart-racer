@@ -10,6 +10,8 @@ const MAX_SPARKS = 160;
 export class KartView {
   constructor({ color = '#e8433f', gradientMap }) {
     this.group = new THREE.Group();
+    this.group.rotation.order = 'YXZ'; // yaw first, then pitch on hills
+    this.pitch = 0;
     this.body = new THREE.Group(); // tilts and hops; wheels stay planted
     this.group.add(this.body);
     const toon = (c) => new THREE.MeshToonMaterial({ color: c, gradientMap });
@@ -145,12 +147,15 @@ export class KartView {
   }
 
   update(s, dt, steer) {
-    this.group.position.set(s.x, 0, s.z);
+    this.group.position.set(s.x, s.ground || 0, s.z);
 
     // While drifting the kart swings sideways for that classic look
     const targetYaw = s.drifting ? s.driftDir * 0.42 : 0;
     this.visualYaw += (targetYaw - this.visualYaw) * Math.min(1, dt * 10);
     this.group.rotation.y = s.heading - this.visualYaw;
+    const facingSlope = (s.slope || 0) * Math.cos(this.visualYaw);
+    this.pitch += (-Math.atan(facingSlope) - this.pitch) * Math.min(1, dt * 10);
+    this.group.rotation.x = this.pitch;
     this.group.updateMatrixWorld();
 
     const targetLean = (s.drifting ? s.driftDir * 0.12 : steer * 0.06) * Math.min(1, Math.abs(s.speed) / 15);

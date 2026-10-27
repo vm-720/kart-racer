@@ -389,7 +389,7 @@ const COIN_RESPAWN = 10;
 
 export class Coins {
   // lines: { at, offset, count } along the loop, or { branch, t, offset, count } along a side road.
-  // Coins in a line are 3 m apart.
+  // Coins in a line are 3 m apart; `height` lifts a line into the air (over a gap, say).
   constructor(track, lines) {
     this.group = new THREE.Group();
     this.coins = [];
@@ -406,11 +406,12 @@ export class Coins {
         const c = path.points[i];
         const s = path.sides[i];
         const off = line.offset || 0;
+        const y = c.y + (line.height || 0);
         const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(c.x + s.x * off, c.y + 1.1, c.z + s.z * off);
+        mesh.position.set(c.x + s.x * off, y + 1.1, c.z + s.z * off);
         mesh.castShadow = true;
         this.group.add(mesh);
-        this.coins.push({ mesh, x: mesh.position.x, z: mesh.position.z, y: c.y, respawn: 0 });
+        this.coins.push({ mesh, x: mesh.position.x, z: mesh.position.z, y, respawn: 0 });
       }
     }
   }

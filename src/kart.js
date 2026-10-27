@@ -134,6 +134,26 @@ export class KartView {
     this.wind.visible = false;
     this.body.add(this.wind);
 
+    // Rescue drone that carries the kart back after a fall
+    this.drone = new THREE.Group();
+    const droneBody = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.4, 1.4), toon('#ffc531'));
+    this.drone.add(droneBody);
+    this.rotors = [];
+    for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.1, 0.15), dark);
+      arm.position.set(x * 0.9, 0.15, z * 0.9);
+      const rotor = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.04, 0.16), toon('#d9dbe8'));
+      rotor.position.set(x * 0.9, 0.25, z * 0.9);
+      this.rotors.push(rotor);
+      this.drone.add(arm, rotor);
+    }
+    const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.2, 4), dark);
+    cable.position.y = -1.2;
+    this.drone.add(cable);
+    this.drone.position.y = 4.6;
+    this.drone.visible = false;
+    this.body.add(this.drone);
+
     this.#buildSparks();
     this.spinAngle = 0;
     this.trickAngle = 0;
@@ -230,6 +250,8 @@ export class KartView {
     this.group.scale.setScalar(this.size);
     this.time += dt;
     this.bubble.visible = s.shield > 0;
+    this.drone.visible = s.drone > 0;
+    if (this.drone.visible) for (const r of this.rotors) r.rotation.y += dt * 40;
     if (s.star > 0) this.paint.color.setHSL((this.time * 1.5) % 1, 0.9, 0.6);
     else this.paint.color.copy(this.baseColor);
     this.wind.visible = s.slip > 0 || s.draftCharge > 0.15 && !s.drifting;

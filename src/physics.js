@@ -29,6 +29,10 @@ export const TUNING = {
   maxCoins: 10,
   trickBoost: 0.9, // boost seconds for landing a ramp trick
   launch: 0.9, // how much of the ramp's angle carries into the jump
+  padJump: 15, // upward speed from a low-gravity jump pad
+  lowGravity: 0.45, // gravity multiplier while flying off a jump pad
+  fallTime: 1.3, // seconds of falling before the drone picks you up
+  droneTime: 1.2, // seconds the drone takes to set you back down
   kartRadius: 1.1,
 };
 
@@ -69,6 +73,12 @@ export function createKartState({ position, heading, index }) {
     rampSlope: 0,
     rampAir: false, // flying off a ramp (a trick is possible)
     tricked: false,
+    lowG: false, // floating after a jump pad
+    supported: true, // false when there's no floor under the kart
+    falling: false,
+    fallTime: 0,
+    drone: 0, // seconds left of being carried back after a fall
+    safeIndex: index, // last spot on the road, where the drone brings you back
     events: [], // one-frame notifications for sounds and effects
   };
 }
@@ -89,6 +99,31 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
   if (frozen) {
     s.vx = s.vz = 0;
     s.speed = 0;
+    return s;
+  }
+
+  // Fell off the track: drop out of sight, then a drone carries the kart back
+  if (s.falling) {
+    s.fallTime += dt;
+    s.vy -= T.gravity * dt;
+    s.y += s.vy * dt;
+    s.x += s.vx * dt;
+    s.z += s.vz * dt;
+    s.vx *= Math.exp(-0.6 * dt);
+    s.vz *= Math.exp(-0.6 * dt);
+    if (s.fallTime > T.fallTime) {
+      respawn(s, track);
+      s.drone = T.droneTime;
+      s.events.push('respawn');
+    }
+    return s;
+  }
+  if (s.drone > 0) {
+    s.drone = Math.max(0, s.drone - dt);
+    s.vx = s.vz = s.vy = 0;
+    s.speed = 0;
+    s.y = 0.3 + 3.2 * (s.drone / T.droneTime);
+    s.grounded = false;
     return s;
   }
 
@@ -116,10 +151,18 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
     s.trick = 0.45;
     s.events.push('trick');
   }
-  s.vy -= T.gravity * dt;
+  s.vy -= T.gravity * (s.lowG ? T.lowGravity : 1) * dt;
   s.y += s.vy * dt;
-  if (s.y <= 0) {
+  if (s.y <= 0 && !s.grounded && !s.supported) {
+    // Nothing to land on
+    s.falling = true;
+    s.fallTime = 0;
+    s.drifting = false;
+    s.driftDir = 0;
+    s.events.push('fall');
+  } else if (s.y <= 0) {
     if (!s.grounded) {
+      s.lowG = false;
       s.grounded = true;
       if (s.rampAir && s.tricked) {
         s.boost = Math.max(s.boost, T.trickBoost);
@@ -163,6 +206,14 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
     here.surface === 0
       ? Math.abs(q.offset) > track.halfWidth + 1.6
       : !s.dirt && Math.abs(here.q.offset) > side.halfWidth + 1.6;
+  if (s.grounded && here.surface === 0 && track.onJumpPad(q.index, q.offset)) {
+    s.vy = T.padJump;
+    s.grounded = false;
+    s.lowG = true;
+    s.rampAir = true; // tricks work off jump pads too
+    s.tricked = false;
+    s.events.push('launch');
+  }
   if (s.grounded && here.surface === 0 && track.onBoostPad(q.index, q.offset)) {
     if (s.boost < 0.2) s.events.push('boost');
     s.boost = Math.max(s.boost, T.padBoost);
@@ -224,7 +275,7 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
 
   // Walls: slide along them and lose a little speed
   let loc = track.locate({ x: s.x, z: s.z }, q.index, here.surface);
-  if (!loc.inside) {
+  if (!loc.inside && !loc.free) {
     const q2 = loc.q;
     const limit = (loc.branch ? loc.branch.wallOffset : track.wallOffset) - T.kartRadius;
     const sign = Math.sign(q2.offset);
@@ -249,6 +300,12 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
     }
   }
   s.surface = loc.surface;
+  s.supported = loc.supported;
+  if (s.grounded && !s.supported) {
+    // Drove off an edge: start dropping
+    s.grounded = false;
+    s.vy = 0;
+  }
   s.trackIndex = track.lapIndex(loc);
   s.offset = loc.surface === 0 ? loc.q.offset : 0;
 
@@ -267,7 +324,8 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
   if (!s.grounded) s.y = Math.max(0, s.y + s.rampH - rampH);
   s.rampH = rampH;
   s.rampSlope = ramp ? ramp.slope : 0;
-  s.ground = loc.q.height + rampH;
+  if (s.supported) s.ground = loc.q.height + rampH;
+  if (s.grounded && s.supported && loc.inside && loc.surface === 0) s.safeIndex = loc.q.index;
   s.slope = ramp ? ramp.slope : loc.q.slope;
   s.speed = s.vx * Math.sin(s.heading) + s.vz * Math.cos(s.heading);
 
@@ -303,7 +361,9 @@ function updateLap(s, track) {
 }
 
 export function respawn(s, track) {
-  const i = s.trackIndex;
+  const i = track.pastGap(s.safeIndex ?? s.trackIndex);
+  s.trackIndex = i;
+  s.safeIndex = i;
   const c = track.point(i);
   const t = track.tangents[i];
   s.x = c.x;
@@ -320,6 +380,9 @@ export function respawn(s, track) {
   s.surface = 0;
   s.rampH = 0;
   s.rampAir = false;
+  s.lowG = false;
+  s.falling = false;
+  s.supported = true;
 }
 
 // A single number for ranking racers: laps completed plus how far around the current lap.

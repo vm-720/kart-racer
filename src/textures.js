@@ -175,3 +175,100 @@ export function rampTexture() {
     }
   });
 }
+
+// Space station deck plating for the Star Station road.
+export function deckTexture({ lines = true } = {}) {
+  return canvasTexture(256, (ctx, s) => {
+    ctx.fillStyle = '#3a3f63';
+    ctx.fillRect(0, 0, s, s);
+    speckle(ctx, s, 1800, ['#33385a', '#41466c', '#2f3454'], 2);
+    ctx.strokeStyle = '#2a2e4a';
+    ctx.lineWidth = 3;
+    for (let k = 0; k <= 2; k++) {
+      ctx.beginPath();
+      ctx.moveTo(0, (k * s) / 2);
+      ctx.lineTo(s, (k * s) / 2);
+      ctx.stroke();
+    }
+    if (!lines) return;
+    ctx.fillStyle = 'rgba(120, 230, 255, 0.55)';
+    ctx.fillRect(s / 2 - 3, 0, 6, s * 0.4); // dashed centre light
+  });
+}
+
+// Riveted metal for the space track's edges.
+export function metalTexture() {
+  return canvasTexture(128, (ctx, s) => {
+    ctx.fillStyle = '#5b6187';
+    ctx.fillRect(0, 0, s, s);
+    speckle(ctx, s, 500, ['#545a7e', '#646a92'], 2);
+    ctx.fillStyle = '#8a90b8';
+    for (const [x, y] of [[10, 10], [s - 10, 10], [10, s - 10], [s - 10, s - 10]]) {
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = '#41466c';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, s - 4, s - 4);
+  });
+}
+
+// Orange and black warning stripes along edges with no rail.
+export function hazardTexture() {
+  return canvasTexture(64, (ctx, s) => {
+    ctx.fillStyle = '#ff8a1f';
+    ctx.fillRect(0, 0, s, s);
+    ctx.fillStyle = '#1d1b3a';
+    for (let k = -1; k < 3; k++) {
+      ctx.beginPath();
+      ctx.moveTo(0, k * 32);
+      ctx.lineTo(s, k * 32 + 32);
+      ctx.lineTo(s, k * 32 + 48);
+      ctx.lineTo(0, k * 32 + 16);
+      ctx.fill();
+    }
+  });
+}
+
+// Glowing purple pad that bounces karts into a low-gravity jump.
+export function jumpPadTexture() {
+  return canvasTexture(128, (ctx, s) => {
+    ctx.fillStyle = '#5a1f9a';
+    ctx.fillRect(0, 0, s, s);
+    ctx.strokeStyle = '#e9b6ff';
+    ctx.lineWidth = 8;
+    for (const r of [18, 38, 58]) {
+      ctx.beginPath();
+      ctx.arc(s / 2, s / 2, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  });
+}
+
+// Black sky full of stars and a soft nebula glow.
+export function starSkyTexture() {
+  const c = document.createElement('canvas');
+  c.width = 2048;
+  c.height = 1024;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#05041a';
+  ctx.fillRect(0, 0, 2048, 1024);
+  for (const [x, y, r, col] of [[500, 380, 420, '120, 60, 200'], [1500, 560, 520, '40, 110, 220'], [1100, 300, 300, '210, 60, 150']]) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(${col}, 0.35)`);
+    g.addColorStop(1, `rgba(${col}, 0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 2048, 1024);
+  }
+  for (let i = 0; i < 2600; i++) {
+    const b = Math.random();
+    ctx.fillStyle = `rgba(255, 255, ${200 + Math.random() * 55}, ${0.4 + b * 0.6})`;
+    const r = b > 0.97 ? 2.2 : b > 0.85 ? 1.4 : 0.8;
+    ctx.fillRect(Math.random() * 2048, Math.random() * 1024, r, r);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  return tex;
+}

@@ -149,6 +149,14 @@ kbd {
   box-shadow: 0 3px 0 var(--ink);
 }
 .swatch[aria-checked="true"] { outline: 3px solid var(--gold); outline-offset: 2px; transform: translateY(-2px); }
+.track-pick { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 6px 0 14px; }
+.track-pick button {
+  font: 800 14px 'Nunito', sans-serif; padding: 6px 14px; border-radius: 999px; cursor: pointer;
+  background: white; color: var(--ink); border: 3px solid var(--ink); box-shadow: 0 3px 0 var(--ink);
+}
+.track-pick button[aria-checked="true"] { background: var(--gold); transform: translateY(-1px); }
+.track-pick button:disabled { opacity: 1; cursor: default; }
+.track-pick button:disabled:not([aria-checked="true"]) { opacity: 0.45; }
 .menu-buttons { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 button.big.alt { background: var(--cream); color: var(--ink); }
 button.mid {

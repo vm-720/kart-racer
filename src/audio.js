@@ -172,6 +172,10 @@ export class Audio {
       case 'coin':
         this.#tone(988, 0.07, { type: 'square', vol: 0.06 });
         return this.#tone(1319, 0.18, { type: 'square', vol: 0.06, delay: 0.07 });
+      case 'fall': return this.#tone(900, 1.1, { type: 'sine', slide: 0.15, vol: 0.12 });
+      case 'respawn':
+        this.#tone(220, 0.9, { type: 'sawtooth', vol: 0.04 });
+        return this.#tone(660, 0.25, { type: 'triangle', vol: 0.1, delay: 0.9 });
       case 'launch': return this.#tone(160, 0.35, { type: 'triangle', slide: 2.2, vol: 0.12 });
       case 'trick':
         [660, 880, 1100].forEach((f, i) => this.#tone(f, 0.1, { type: 'triangle', vol: 0.09, delay: i * 0.05 }));

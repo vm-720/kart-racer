@@ -1,5 +1,15 @@
 import * as THREE from 'three';
-import { asphaltTexture, boostTexture, checkerTexture, dirtTexture, grassTexture, rampTexture, stoneTexture } from './textures.js';
+import {
+  asphaltTexture,
+  boostTexture,
+  checkerTexture,
+  dirtTexture,
+  grassTexture,
+  hazardTexture,
+  jumpPadTexture,
+  rampTexture,
+  stoneTexture,
+} from './textures.js';
 
 // A track is a closed centre line sampled into evenly spaced points.
 // Everything else (road mesh, walls, lap progress, collisions) is derived from those samples,
@@ -48,7 +58,7 @@ function ribbon(path, offA, offB, y, { vScale = 1, colorAt = null, skip = null }
 }
 
 // A stone wall along one edge. Walls reach down to the ground so raised sections look like embankments.
-function wallGeometry(path, off, sign, height, skip) {
+function wallGeometry(path, off, sign, height, skip, { thickness = 1.2, base = null } = {}) {
   const pos = [];
   const uv = [];
   const idx = [];
@@ -59,10 +69,11 @@ function wallGeometry(path, off, sign, height, skip) {
     const s = path.sides[i % path.count];
     const x = c.x + s.x * off;
     const z = c.z + s.z * off;
-    const x2 = c.x + s.x * (off + sign * 1.2);
-    const z2 = c.z + s.z * (off + sign * 1.2);
+    const x2 = c.x + s.x * (off + sign * thickness);
+    const z2 = c.z + s.z * (off + sign * thickness);
     const top = c.y + height;
-    pos.push(x, 0, z, x, top, z, x2, top, z2, x2, 0, z2);
+    const bottom = base === null ? 0 : c.y + base; // floating tracks hang in the air
+    pos.push(x, bottom, z, x, top, z, x2, top, z2, x2, bottom, z2);
     uv.push(u, 0, u, top / 4, u, top / 4 + 0.3, u, 0);
     u += path.spacing / 4;
     if (i < n && !skip?.(i)) {
@@ -104,7 +115,15 @@ function edgePoint(path, i, off) {
 }
 
 export class Track {
-  constructor({ name, centerLine, width, runoff, wallHeight, laps, boostPads = [], branches = [], ramps = [] }) {
+  // theme: { road, runoff (texture makers), curbs: [color, color], rails (glowing rails instead of stone walls),
+  //          floating (no ground: the track hangs in space) }
+  // openEdges: [{ from, to, side }] lap fractions with no wall (side -1 left, 1 right, 0 both): you can fall off.
+  // gaps: [{ from, to }] stretches with no road at all, to jump across. jumpPads: low-gravity bounce pads.
+  constructor({
+    name, centerLine, width, runoff, wallHeight, laps, boostPads = [], branches = [], ramps = [],
+    theme = {}, openEdges = [], gaps = [], jumpPads = [],
+  }) {
+    this.theme = theme;
     this.name = name;
     this.width = width;
     this.halfWidth = width / 2;
@@ -117,11 +136,15 @@ export class Track {
     this.#sample(centerLine);
     this.closed = true;
     this.count = SAMPLES;
+    this.#markEdges(openEdges, gaps);
     // Side roads: shortcuts and split paths that leave the loop and rejoin it further on
     this.branches = branches.map((b) => new Branch(this, b));
     this.obstacles = this.branches.flatMap((b) => b.obstacles);
+    // Only tracks with open edges or gaps let karts fall off
+    this.canFall = openEdges.length > 0 || gaps.length > 0 || this.branches.some((b) => !b.walls);
     this.boostPads = boostPads.map((p) => this.#makeBoostPad(p));
     this.ramps = ramps.map((r) => this.#makeRamp(r));
+    this.jumpPads = jumpPads.map((p) => this.#makeJumpPad(p));
     this.#buildRoad();
     this.#buildCurbs();
     this.#buildRunoff();
@@ -129,6 +152,46 @@ export class Track {
     this.#buildStartLine();
     for (const b of this.branches) b.build(this.group);
     this.#buildObstacles();
+    if (theme.floating) this.#buildUnderside();
+  }
+
+  // Per-sample flags: which sides have a wall, and where the road is missing.
+  #markEdges(openEdges, gaps) {
+    this.wallLeft = new Array(SAMPLES).fill(true);
+    this.wallRight = new Array(SAMPLES).fill(true);
+    this.gap = new Array(SAMPLES).fill(false);
+    const each = (from, to, fn) => {
+      const a = Math.round(from * SAMPLES);
+      const n = (Math.round(to * SAMPLES) - a + SAMPLES) % SAMPLES;
+      for (let k = 0; k <= n; k++) fn((a + k) % SAMPLES);
+    };
+    for (const e of openEdges) {
+      each(e.from, e.to, (i) => {
+        if (e.side <= 0) this.wallLeft[i] = false;
+        if (e.side >= 0) this.wallRight[i] = false;
+      });
+    }
+    this.gaps = gaps.map((g) => ({ start: Math.round(g.from * SAMPLES), end: Math.round(g.to * SAMPLES) }));
+    for (const g of gaps) {
+      each(g.from, g.to, (i) => {
+        this.gap[i] = true;
+        this.wallLeft[i] = this.wallRight[i] = false;
+      });
+    }
+  }
+
+  hasWall(i, side) {
+    i = ((i % SAMPLES) + SAMPLES) % SAMPLES;
+    return side < 0 ? this.wallLeft[i] : this.wallRight[i];
+  }
+
+  // If a gap in the road starts just ahead of sample i, the sample just past it (else i).
+  pastGap(i) {
+    for (const g of this.gaps) {
+      const ahead = (g.start - i + SAMPLES) % SAMPLES;
+      if (ahead < 120 || (i - g.start + SAMPLES) % SAMPLES <= (g.end - g.start + SAMPLES) % SAMPLES) return (g.end + 12) % SAMPLES;
+    }
+    return i;
   }
 
   #sample(centerLine) {
@@ -227,51 +290,81 @@ export class Track {
     return this.branches.some((b) => b.contains(p, b.wallOffset + margin));
   }
 
+  #inGap(i) {
+    return this.gap[i % SAMPLES] || this.gap[(i + 1) % SAMPLES];
+  }
+
   #buildRoad() {
-    const tex = asphaltTexture();
-    const geo = ribbon(this, -this.halfWidth, this.halfWidth, 0.06, { vScale: 1 / this.width });
+    const tex = (this.theme.road || asphaltTexture)();
+    const skip = (i) => this.#inGap(i);
+    const geo = ribbon(this, -this.halfWidth, this.halfWidth, 0.06, { vScale: 1 / this.width, skip });
     const road = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex }));
     road.receiveShadow = true;
     this.group.add(road);
   }
 
   #buildCurbs() {
-    const red = new THREE.Color('#e8433f');
-    const white = new THREE.Color('#fff8e7');
+    const [red, white] = (this.theme.curbs || ['#e8433f', '#fff8e7']).map((c) => new THREE.Color(c));
     const stripe = Math.max(1, Math.round(2.5 / this.spacing));
     const colorAt = (i) => (Math.floor(i / stripe) % 2 ? red : white);
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
     for (const sign of [-1, 1]) {
       const a = sign * this.halfWidth;
       const b = sign * (this.halfWidth + CURB);
-      const skip = (i) => this.#onBranchRoad(i, (a + b) / 2) || this.#onBranchRoad(i + 1, (a + b) / 2);
+      const skip = (i) => this.#inGap(i) || this.#onBranchRoad(i, (a + b) / 2) || this.#onBranchRoad(i + 1, (a + b) / 2);
       const curb = new THREE.Mesh(ribbon(this, a, b, 0.1, { colorAt, skip }), mat);
       curb.receiveShadow = true;
       this.group.add(curb);
     }
   }
 
-  // Grass between the curbs and the walls (follows the road's height on hills)
+  // Grass (or deck plating) between the curbs and the walls. It follows the road's height on hills.
+  // Edges with no wall get warning stripes.
   #buildRunoff() {
-    const tex = grassTexture();
+    const tex = (this.theme.runoff || grassTexture)();
     const mat = new THREE.MeshLambertMaterial({ map: tex });
+    const hazard = new THREE.MeshLambertMaterial({ map: hazardTexture() });
     for (const sign of [-1, 1]) {
       const a = sign * (this.halfWidth + CURB);
       const b = sign * this.wallOffset;
-      const skip = (i) => [a, b].some((o) => this.#onBranchRoad(i, o) || this.#onBranchRoad(i + 1, o));
+      const skip = (i) => this.#inGap(i) || [a, b].some((o) => this.#onBranchRoad(i, o) || this.#onBranchRoad(i + 1, o));
       const strip = new THREE.Mesh(ribbon(this, a, b, 0.05, { vScale: 1 / 12, skip }), mat);
       strip.receiveShadow = true;
       this.group.add(strip);
+      const walled = (i) => this.hasWall(i, sign) || this.hasWall(i + 1, sign);
+      const edge = ribbon(this, b - sign * 1.2, b, 0.07, { vScale: 1 / 2, skip: (i) => skip(i) || walled(i) });
+      this.group.add(new THREE.Mesh(edge, hazard));
+    }
+  }
+
+  // Underneath a floating track: a deck slab with sides, so it reads as solid from below.
+  #buildUnderside() {
+    const mat = new THREE.MeshLambertMaterial({ color: '#2a2e4a', side: THREE.DoubleSide });
+    const skip = (i) => this.#inGap(i);
+    this.group.add(new THREE.Mesh(ribbon(this, -this.wallOffset, this.wallOffset, -1.6, { skip }), mat));
+    for (const sign of [-1, 1]) {
+      const geo = wallGeometry(this, sign * this.wallOffset, sign, 0.04, skip, { thickness: 0.05, base: -1.6 });
+      this.group.add(new THREE.Mesh(geo, mat));
+    }
+    // A glowing trim under the edges
+    const glow = new THREE.MeshBasicMaterial({ color: '#7fe3ff' });
+    for (const sign of [-1, 1]) {
+      const geo = wallGeometry(this, sign * (this.wallOffset + 0.06), sign, -1.2, skip, { thickness: 0.05, base: -1.4 });
+      this.group.add(new THREE.Mesh(geo, glow));
     }
   }
 
   #buildWalls() {
-    const mat = new THREE.MeshLambertMaterial({ map: stoneTexture(), side: THREE.DoubleSide });
+    const rails = this.theme.rails;
+    const mat = rails
+      ? new THREE.MeshBasicMaterial({ color: '#7fe3ff', transparent: true, opacity: 0.85, side: THREE.DoubleSide })
+      : new THREE.MeshLambertMaterial({ map: stoneTexture(), side: THREE.DoubleSide });
     for (const sign of [-1, 1]) {
       const off = sign * this.wallOffset;
-      // Leave gaps where a side road leaves or joins
-      const skip = (i) => this.#inBranch(i, off) || this.#inBranch(i + 1, off);
-      const wall = new THREE.Mesh(wallGeometry(this, off, sign, this.wallHeight, skip), mat);
+      // Leave gaps where a side road leaves or joins, and along open edges
+      const skip = (i) => !this.hasWall(i, sign) || !this.hasWall(i + 1, sign) || this.#inBranch(i, off) || this.#inBranch(i + 1, off);
+      const shape = rails ? { thickness: 0.35, base: this.wallHeight - 0.45 } : this.theme.floating ? { base: -1.6 } : {};
+      const wall = new THREE.Mesh(wallGeometry(this, off, sign, this.wallHeight, skip, shape), mat);
       wall.castShadow = true;
       wall.receiveShadow = true;
       this.group.add(wall);
@@ -374,6 +467,31 @@ export class Track {
     return { lip, offset, halfWidth: width / 2, length, height, slope: height / length };
   }
 
+  // A low-gravity jump pad across the road at lap fraction `at`.
+  #makeJumpPad({ at, offset = 0, width = this.width - 2, length = 6 }) {
+    const i = Math.round(at * SAMPLES);
+    const c = this.point(i).clone().addScaledVector(this.sides[i], offset);
+    const t = this.tangents[i];
+    const tex = jumpPadTexture();
+    tex.repeat.set(Math.max(1, Math.round(width / length)), 1);
+    const pad = new THREE.Mesh(new THREE.PlaneGeometry(width, length), new THREE.MeshBasicMaterial({ map: tex }));
+    pad.rotation.x = -Math.PI / 2;
+    pad.rotation.z = Math.atan2(t.x, t.z) + Math.PI;
+    pad.position.set(c.x, c.y + 0.12, c.z);
+    this.group.add(pad);
+    return { index: i, offset, halfLength: length / 2, halfWidth: width / 2, mesh: pad };
+  }
+
+  onJumpPad(index, offset) {
+    for (const p of this.jumpPads) {
+      let di = index - p.index;
+      if (di > SAMPLES / 2) di -= SAMPLES;
+      if (di < -SAMPLES / 2) di += SAMPLES;
+      if (Math.abs(di * this.spacing) < p.halfLength && Math.abs(offset - p.offset) < p.halfWidth) return true;
+    }
+    return false;
+  }
+
   // Height of any ramp under a main-loop position, and its steepness.
   rampAt(index, offset) {
     for (const r of this.ramps) {
@@ -390,24 +508,31 @@ export class Track {
 
   // Works out which surface a position is on: the main loop (surface 0) or a branch (1, 2...).
   // `inside` is false when the kart is past every wall; `prev` is the surface it was on before.
+  // `free` means there's no wall to push back (an open edge), and `supported` whether there is
+  // any floor under the kart at all.
   locate(pos, hint, prev = 0) {
     const main = this.query(pos, hint);
+    const mainFloor = Math.abs(main.offset) <= this.wallOffset + 0.2 && !this.gap[main.index];
+    let supported = mainFloor || !this.canFall;
     let best = null;
-    if (Math.abs(main.offset) <= this.wallOffset - KART_RADIUS) {
+    if (Math.abs(main.offset) <= this.wallOffset - KART_RADIUS && !this.gap[main.index]) {
       best = { surface: 0, q: main, depth: Math.abs(main.offset) / this.wallOffset };
     }
-    this.branches.forEach((b, k) => {
+    const branchQ = this.branches.map((b, k) => {
       const q = b.query(pos);
-      if (!q.interior || Math.abs(q.offset) > b.wallOffset - KART_RADIUS) return;
+      if (q.interior && Math.abs(q.offset) <= b.wallOffset + 0.2) supported = true;
+      if (!q.interior || Math.abs(q.offset) > b.wallOffset - KART_RADIUS) return q;
       const depth = Math.abs(q.offset) / b.wallOffset;
       if (!best || depth < best.depth) best = { surface: k + 1, q, depth, branch: b };
+      return q;
     });
-    if (best) return { ...best, main, inside: true };
-    // Outside every surface: the walls of the one we came from push back
+    if (best) return { ...best, main, inside: true, free: true, supported };
+    // Outside every surface: the walls of the one we came from push back, if it has any there
     const b = this.branches[prev - 1];
-    const q = b?.query(pos);
-    if (q?.interior) return { surface: prev, q, branch: b, main, inside: false };
-    return { surface: 0, q: main, main, inside: false };
+    const q = branchQ[prev - 1];
+    if (q?.interior) return { surface: prev, q, branch: b, main, inside: false, free: !b.walls, supported };
+    const free = this.gap[main.index] || !this.hasWall(main.index, Math.sign(main.offset));
+    return { surface: 0, q: main, main, inside: false, free, supported };
   }
 
   // Lap position of a spot on a surface, as a main-loop sample index.
@@ -423,8 +548,9 @@ export class Track {
 // A side road that leaves the loop at sample `from` and rejoins at `to`: a paved split path
 // (surface 'road') or a dirt shortcut that is slow without a boost (surface 'dirt').
 class Branch {
-  constructor(main, { from, to, width, runoff = 2, surface = 'road', bend = 0.4, obstacles = [] }) {
+  constructor(main, { from, to, width, runoff = 2, surface = 'road', bend = 0.4, obstacles = [], walls = true }) {
     this.main = main;
+    this.walls = walls;
     this.from = from;
     this.to = to;
     this.span = (to - from + SAMPLES) % SAMPLES;
@@ -521,6 +647,7 @@ class Branch {
     };
     const both = (off, margin) => (i) => onMain(i, off, margin) || onMain(i + 1, off, margin);
 
+    const roadTexture = main.theme.road || asphaltTexture;
     if (this.surface === 'road') {
       // Where the side road overlaps the main road, draw plain asphalt underneath it so
       // the lane lines don't cross; the side road's own lines start once it is clear.
@@ -529,11 +656,11 @@ class Branch {
       const covered = (i) => edgeOnMain(i, -this.halfWidth, main.halfWidth) && edgeOnMain(i, this.halfWidth, main.halfWidth);
       const lined = new THREE.Mesh(
         ribbon(this, -this.halfWidth, this.halfWidth, 0.06, { vScale: 1 / (this.halfWidth * 2), skip: touching }),
-        new THREE.MeshLambertMaterial({ map: asphaltTexture() }),
+        new THREE.MeshLambertMaterial({ map: roadTexture() }),
       );
       const plain = new THREE.Mesh(
         ribbon(this, -this.halfWidth, this.halfWidth, 0.03, { vScale: 1 / (this.halfWidth * 2), skip: (i) => !touching(i) || covered(i) }),
-        new THREE.MeshLambertMaterial({ map: asphaltTexture({ lines: false }) }),
+        new THREE.MeshLambertMaterial({ map: roadTexture({ lines: false }) }),
       );
       lined.receiveShadow = plain.receiveShadow = true;
       group.add(lined, plain);
@@ -547,11 +674,10 @@ class Branch {
     }
 
     if (this.surface === 'road') {
-      const red = new THREE.Color('#e8433f');
-      const white = new THREE.Color('#fff8e7');
+      const [red, white] = (main.theme.curbs || ['#e8433f', '#fff8e7']).map((c) => new THREE.Color(c));
       const colorAt = (i) => (Math.floor(i / 3) % 2 ? red : white);
       const curbMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-      const grassMat = new THREE.MeshLambertMaterial({ map: grassTexture() });
+      const grassMat = new THREE.MeshLambertMaterial({ map: (main.theme.runoff || grassTexture)() });
       for (const sign of [-1, 1]) {
         const a = sign * this.halfWidth;
         const b = sign * (this.halfWidth + CURB);
@@ -564,10 +690,27 @@ class Branch {
       }
     }
 
-    const wallMat = new THREE.MeshLambertMaterial({ map: stoneTexture(), side: THREE.DoubleSide });
+    if (main.theme.floating) {
+      const under = new THREE.MeshLambertMaterial({ color: '#2a2e4a', side: THREE.DoubleSide });
+      group.add(new THREE.Mesh(ribbon(this, -this.wallOffset, this.wallOffset, -1.2), under));
+    }
+    if (!this.walls) {
+      // No walls: warning stripes along both edges instead
+      const hazard = new THREE.MeshLambertMaterial({ map: hazardTexture() });
+      for (const sign of [-1, 1]) {
+        const o = sign * this.wallOffset;
+        group.add(new THREE.Mesh(ribbon(this, o - sign * 0.8, o, 0.08, { vScale: 1 / 2, skip: both(o, main.wallOffset) }), hazard));
+      }
+      return;
+    }
+    const rails = main.theme.rails;
+    const wallMat = rails
+      ? new THREE.MeshBasicMaterial({ color: '#7fe3ff', transparent: true, opacity: 0.85, side: THREE.DoubleSide })
+      : new THREE.MeshLambertMaterial({ map: stoneTexture(), side: THREE.DoubleSide });
+    const shape = rails ? { thickness: 0.35, base: main.wallHeight - 0.45 } : main.theme.floating ? { base: -1.6 } : {};
     for (const sign of [-1, 1]) {
       const off = sign * this.wallOffset;
-      const wall = new THREE.Mesh(wallGeometry(this, off, sign, main.wallHeight, both(off, main.wallOffset)), wallMat);
+      const wall = new THREE.Mesh(wallGeometry(this, off, sign, main.wallHeight, both(off, main.wallOffset), shape), wallMat);
       wall.castShadow = true;
       wall.receiveShadow = true;
       group.add(wall);

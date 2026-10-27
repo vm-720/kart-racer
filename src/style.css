@@ -131,3 +131,56 @@ kbd {
   .hud-bottom-right { bottom: auto; top: 50%; transform: translateY(-50%); }
   #minimap { width: 120px; height: 120px; }
 }
+
+/* Menu, lobby and results */
+.panel h2 { font-family: 'Lilita One', sans-serif; font-size: 40px; margin: 0; line-height: 1.1; color: var(--ink); }
+.code { color: var(--red); letter-spacing: 3px; }
+.panel { max-height: calc(100vh - 32px); overflow-y: auto; }
+.profile { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 18px; }
+.profile label { font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.7; }
+.panel input {
+  font: 800 18px 'Nunito', sans-serif; color: var(--ink); background: white; text-align: center;
+  border: 3px solid var(--ink); border-radius: 12px; padding: 8px 12px; width: 220px; max-width: 100%;
+}
+.panel input:focus { outline: 3px solid var(--gold); outline-offset: 2px; }
+.swatches { display: flex; gap: 8px; justify-content: center; }
+.swatch {
+  width: 32px; height: 32px; border-radius: 50%; border: 3px solid var(--ink); cursor: pointer; padding: 0;
+  box-shadow: 0 3px 0 var(--ink);
+}
+.swatch[aria-checked="true"] { outline: 3px solid var(--gold); outline-offset: 2px; transform: translateY(-2px); }
+.menu-buttons { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+button.big.alt { background: var(--cream); color: var(--ink); }
+button.mid {
+  font-family: 'Lilita One', sans-serif; font-size: 18px; padding: 8px 18px; border-radius: 12px; cursor: pointer;
+  background: var(--gold); color: var(--ink); border: 3px solid var(--ink); box-shadow: 0 4px 0 var(--ink);
+}
+button.mid:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.join-form { display: flex; gap: 8px; justify-content: center; margin-top: 16px; }
+.join-form input { width: 150px; text-transform: uppercase; letter-spacing: 3px; }
+.error { color: #c42420; font-weight: 800; margin: 12px 0 0; }
+.invite { background: #fff1c2; border: 3px solid var(--ink); border-radius: 16px; padding: 14px; margin-bottom: 16px; }
+.invite p { margin: 0 0 10px; font-weight: 800; }
+.help { margin-top: 18px; text-align: left; }
+.help summary { cursor: pointer; font-weight: 800; text-align: center; }
+.link-row { display: flex; gap: 8px; justify-content: center; margin: 4px 0 16px; }
+.link-row input { flex: 1; font-size: 13px; text-align: left; min-width: 0; }
+.players { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 8px; }
+.players li {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 12px;
+  background: white; border: 3px solid var(--ink); font-weight: 800; font-size: 18px;
+}
+.players .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--ink); flex: none; }
+.players .tag { margin-left: auto; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.6; }
+.players li.empty { background: transparent; border-style: dashed; opacity: 0.45; font-weight: 600; }
+
+#place {
+  position: absolute; left: 18px; bottom: 16px; font-family: 'Lilita One', sans-serif; font-size: 72px;
+  line-height: 1; text-shadow: 0 5px 0 var(--ink); color: var(--gold);
+}
+#place small { font-size: 32px; }
+#results-body .row .who { display: flex; align-items: center; gap: 8px; }
+#results-body .row.me { color: var(--red); }
+#results-body .standings .row { max-width: 300px; }
+@media (pointer: coarse) { #place { bottom: auto; top: 120px; font-size: 52px; } }

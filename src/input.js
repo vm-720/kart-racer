@@ -16,6 +16,7 @@ export class Input {
     this.steerSmooth = 0;
 
     window.addEventListener('keydown', (e) => {
+      if (e.target instanceof HTMLInputElement && e.target.type !== 'range') return; // typing a name or room code
       if (Object.values(KEYS).flat().includes(e.code)) e.preventDefault();
       if (!this.down.has(e.code)) this.pressedOnce.add(e.code);
       this.down.add(e.code);

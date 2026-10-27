@@ -115,6 +115,15 @@ kbd {
 #touch button.gas { width: 92px; height: 92px; background: rgba(232, 67, 63, 0.7); }
 #touch button.on { background: rgba(255, 197, 49, 0.8); }
 .touch-left, .touch-right { display: flex; align-items: flex-end; }
+.stick {
+  pointer-events: auto; touch-action: none; position: relative; width: 140px; height: 140px; border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.8); background: rgba(29,27,58,0.35);
+}
+.stick-knob {
+  position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.9); background: rgba(29,27,58,0.6); pointer-events: none;
+}
+.stick.on .stick-knob { background: rgba(255, 197, 49, 0.85); }
 
 @media (max-width: 640px) {
   .lap { font-size: 32px; } .lap .dim { font-size: 22px; } .time { font-size: 20px; }

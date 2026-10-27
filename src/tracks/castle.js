@@ -66,6 +66,29 @@ export function buildCastleTrack(gradientMap) {
       { near: new THREE.Vector3(92, 0, 65), offset: 3 },
       { near: new THREE.Vector3(-236, 0, -40), offset: 4 },
     ],
+    branches: [
+      // Dirt shortcut across the east hairpin: slower than the road unless you boost through it
+      { from: 350, to: 590, width: 9, runoff: 1, surface: 'dirt', bend: 0.45 },
+      // Split path through the chicane: shorter, but narrow and full of barrels
+      {
+        from: 1800,
+        to: 2040,
+        width: 12,
+        runoff: 1.5,
+        surface: 'road',
+        bend: 0.4,
+        obstacles: [
+          { t: 0.32, offset: -3 },
+          { t: 0.47, offset: 3.2 },
+          { t: 0.62, offset: -1 },
+          { t: 0.74, offset: 3.5 },
+        ],
+      },
+    ],
+    ramps: [
+      { at: 1585 / 2400 }, // over the crest after the gatehouse
+      { at: 280 / 2400, offset: 5.5, width: 9 }, // a side kicker on the home straight
+    ],
   });
 
   const toon = (color, extra = {}) => new THREE.MeshToonMaterial({ color, gradientMap, ...extra });
@@ -95,7 +118,18 @@ export function buildCastleTrack(gradientMap) {
   scene.add(buildTrees(track, toon));
   scene.add(buildHills(toon));
   scene.add(buildClouds());
-  return { track, scene, name: 'Castle Cloverleaf', itemRows: [0.05, 0.42, 0.61, 0.93], focus: CASTLE_POS, fog: { color: '#cfe9ff', near: 320, far: 1400 } };
+  const coinLines = [
+    { at: 0.105, offset: 5.5, count: 4 }, // up the side kicker
+    { at: 0.27, offset: 7 },
+    { branch: 0, t: 0.25, count: 7 }, // the dirt shortcut
+    { at: 0.47, offset: -7 },
+    { at: 0.643, count: 5 }, // into the big jump
+    { branch: 1, t: 0.12, count: 4 },
+    { branch: 1, t: 0.82, count: 4 },
+    { at: 0.85, offset: 6 },
+    { at: 0.975, offset: -7 },
+  ];
+  return { track, scene, name: 'Castle Cloverleaf', itemRows: [0.05, 0.42, 0.61, 0.93], coinLines, focus: CASTLE_POS, fog: { color: '#cfe9ff', near: 320, far: 1400 } };
 }
 
 function crenellations(toon, width, depth, y, count, size = 1.6) {
@@ -295,7 +329,7 @@ function buildTrees(track, toon) {
     const p = new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
     if (p.distanceTo(CASTLE_POS) < 115) continue;
     const q = track.query(p);
-    if (Math.abs(q.offset) < track.wallOffset + 5) continue;
+    if (Math.abs(q.offset) < track.wallOffset + 5 || track.onAnyBranch(p, 5)) continue;
     spots.push(p);
   }
 
@@ -413,6 +447,7 @@ function buildPennants(track, toon) {
       const c = track.point(i);
       const s = track.sides[i];
       const off = side * (track.wallOffset + 0.6);
+      if (track.onAnyBranch({ x: c.x + s.x * off, z: c.z + s.z * off }, 1)) continue;
       spots.push({ x: c.x + s.x * off, y: c.y + track.wallHeight, z: c.z + s.z * off, t: track.tangents[i] });
     }
   }

@@ -72,7 +72,9 @@ export class Input {
     let throttle = this.#held('gas') ? 1 : 0;
     let brake = this.#held('brake') ? 1 : 0;
     let steerTarget = (this.#held('right') ? 1 : 0) - (this.#held('left') ? 1 : 0);
-    let drift = this.#held('drift');
+    // A tap shorter than one frame still counts (needed for quick ramp tricks)
+    const tapped = KEYS.drift.filter((k) => this.consume(k)).length > 0;
+    let drift = this.#held('drift') || tapped;
     let analog = false;
 
     const gp = navigator.getGamepads?.().find((g) => g && g.connected);

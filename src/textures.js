@@ -142,3 +142,34 @@ export function flagTexture(color) {
     ctx.fill();
   }, false);
 }
+
+// Packed dirt with tyre ruts, for shortcuts across the grass.
+export function dirtTexture() {
+  return canvasTexture(256, (ctx, s) => {
+    ctx.fillStyle = '#a77b4f';
+    ctx.fillRect(0, 0, s, s);
+    speckle(ctx, s, 2600, ['#8c6440', '#b98c5c', '#9a7048', '#c49a68'], 3);
+    ctx.fillStyle = 'rgba(80, 55, 30, 0.35)';
+    for (const x of [0.28, 0.72]) ctx.fillRect(x * s - 10, 0, 20, s);
+  });
+}
+
+// Yellow and navy chevrons for jump ramps.
+export function rampTexture() {
+  return canvasTexture(128, (ctx, s) => {
+    ctx.fillStyle = '#ffc531';
+    ctx.fillRect(0, 0, s, s);
+    ctx.fillStyle = '#1d1b3a';
+    for (let k = -1; k < 3; k++) {
+      ctx.beginPath();
+      const y = k * (s / 2);
+      ctx.moveTo(0, y + s * 0.5);
+      ctx.lineTo(s / 2, y);
+      ctx.lineTo(s, y + s * 0.5);
+      ctx.lineTo(s, y + s * 0.75);
+      ctx.lineTo(s / 2, y + s * 0.25);
+      ctx.lineTo(0, y + s * 0.75);
+      ctx.fill();
+    }
+  });
+}

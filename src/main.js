@@ -6,7 +6,7 @@ import { createKartState, stepKart, respawn, driftLevel, raceProgress, TUNING } 
 import { Room, MAX_PLAYERS, KART_COLORS, packState, unpackState } from './net.js';
 import { buildCastleTrack } from './tracks/castle.js';
 import { skyTexture, toonGradient } from './textures.js';
-import { ITEMS, ITEM_IDS, ItemBoxes, ItemDirector, ItemWorld, rollItem } from './items.js';
+import { Coins, ITEMS, ITEM_IDS, ItemBoxes, ItemDirector, ItemWorld, rollItem } from './items.js';
 
 const PHYSICS_DT = 1 / 120;
 const SEND_INTERVAL = 1 / 20; // seconds between network updates
@@ -59,7 +59,8 @@ const audio = new Audio();
 
 const boxes = new ItemBoxes(track, level.itemRows);
 const world = new ItemWorld(track);
-scene.add(boxes.group, world.group);
+const coins = new Coins(track, level.coinLines || []);
+scene.add(boxes.group, world.group, coins.group);
 let director = new ItemDirector();
 
 // Rear-view mirror: a second small camera looking backwards
@@ -202,6 +203,7 @@ function resetRace(slot = 0) {
   director = new ItemDirector();
   world.clear();
   boxes.reset();
+  coins.reset();
   renderItemSlot();
   camHeading = kart.heading;
   placeCamera(1);
@@ -664,6 +666,7 @@ function takeHit(kind) {
     kart.grounded = false;
   }
   if (kind === 'thunder') kart.shrink = 3;
+  kart.coins = Math.max(0, kart.coins - 3);
   audio.play(kind === 'oil' || kind === 'thunder' ? 'spin' : 'boom');
   return true;
 }
@@ -690,6 +693,9 @@ function onItemEvent(ev) {
   switch (ev.k) {
     case 'box':
       boxes.take(ev.i);
+      break;
+    case 'coin':
+      coins.take(ev.i);
       break;
     case 'roll':
       if (room?.isHost) room.sendEvent({ k: 'rolled', item: director.grant(ev) }, ev.from);
@@ -758,6 +764,13 @@ function updateItems(dt) {
     audio.play('box');
     if (!held && !rollActive && phase === 'racing') startRoll();
   }
+  const coin = coins.touching(kart);
+  if (coin >= 0) {
+    coins.take(coin);
+    room?.sendEvent({ k: 'coin', i: coin });
+    kart.coins = Math.min(TUNING.maxCoins, kart.coins + 1);
+    audio.play('coin');
+  }
   updateRoll(dt);
   if ((input.consume('KeyE') | input.consume('KeyF')) && held && phase === 'racing' && kart.spin <= 0) useItem();
   checkItemHits();
@@ -773,10 +786,10 @@ function placeCamera(blend, s = kart) {
   const back = 7.5 + Math.min(2, Math.max(0, s.speed) / 15);
   const h = Math.sin(camHeading);
   const c = Math.cos(camHeading);
-  const target = new THREE.Vector3(s.x - h * back, s.ground + 3.3 + s.y * 0.5, s.z - c * back);
+  const target = new THREE.Vector3(s.x - h * back, s.ground + 3.3 + s.y * 0.9, s.z - c * back);
   camPos.lerp(target, blend);
   camera.position.copy(camPos);
-  lookAt.set(s.x + h * 4, s.ground + 1.4 + s.y * 0.6, s.z + c * 4);
+  lookAt.set(s.x + h * 4, s.ground + 1.4 + s.y * 0.9, s.z + c * 4);
   camera.lookAt(lookAt);
   const fov = 66 + (s.boost > 0 ? 10 : 0) + Math.max(0, s.speed) * 0.12;
   camera.fov += (fov - camera.fov) * Math.min(1, blend * 0.6);
@@ -838,16 +851,20 @@ let mapTransform;
   mapTransform = (x, z) => [size / 2 - (x - cx) * scale, size / 2 - (z - cz) * scale];
   const ctx = mapBase.getContext('2d');
   ctx.lineJoin = 'round';
-  for (const [w, color] of [[track.width * scale + 6, 'rgba(29,27,58,0.8)'], [track.width * scale, '#fff8e7']]) {
-    ctx.beginPath();
-    track.points.forEach((p, i) => {
-      const [x, y] = mapTransform(p.x, p.z);
-      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-    });
-    ctx.closePath();
-    ctx.lineWidth = w;
-    ctx.strokeStyle = color;
-    ctx.stroke();
+  ctx.lineCap = 'round';
+  const paths = [track, ...track.branches];
+  for (const [pad, color] of [[6, 'rgba(29,27,58,0.8)'], [0, null]]) {
+    for (const path of paths) {
+      ctx.beginPath();
+      path.points.forEach((p, i) => {
+        const [x, y] = mapTransform(p.x, p.z);
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      });
+      if (path.closed) ctx.closePath();
+      ctx.lineWidth = (path.halfWidth * 2) * scale + pad;
+      ctx.strokeStyle = color || (path.surface === 'dirt' ? '#d9b78a' : '#fff8e7');
+      ctx.stroke();
+    }
   }
   const [sx, sy] = mapTransform(track.points[0].x, track.points[0].z);
   ctx.fillStyle = '#1d1b3a';
@@ -859,6 +876,7 @@ function updateHud() {
   $('lap').textContent = lap;
   $('time').textContent = fmt(raceTime);
   $('speed').textContent = Math.round(Math.abs(kart.speed) * 3.6);
+  $('coins').textContent = kart.coins;
   $('lap-times').innerHTML = lapTimes
     .map((t, i) => `<div class="${t === bestLap ? 'best' : ''}">Lap ${i + 1} · ${fmt(t)}</div>`)
     .join('');
@@ -1037,6 +1055,7 @@ function frame(now) {
 
   track.update(elapsed);
   boxes.update(elapsed, dt);
+  coins.update(elapsed, dt);
   for (const w of wavers) w.rotation.y = Math.sin(elapsed * 3 + w.id) * 0.25;
   if (clouds) clouds.rotation.y = elapsed * 0.004;
 
@@ -1102,5 +1121,6 @@ if (invite && /^[A-Za-z0-9]{5}$/.test(invite)) {
 requestAnimationFrame(frame);
 
 // Handy for debugging from the browser console.
-window.__game = { get kart() { return kart; }, get time() { return raceTime; }, track, racers, audio, world, boxes,
+window.__game = { get kart() { return kart; }, get time() { return raceTime; }, track, racers, audio, world, boxes, coins,
+  coinsHidden: () => coins.coins.filter((c) => c.respawn > 0).length,
   give(id) { held = id; heldUses = ITEMS[id].uses; renderItemSlot(); }, get room() { return room; } };

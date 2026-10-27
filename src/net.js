@@ -323,7 +323,7 @@ function clean(name) {
 export function packState(s) {
   const flags =
     (s.drifting ? 1 : 0) | (s.driftDir > 0 ? 2 : 0) | (s.boost > 0 ? 4 : 0) | (s.grounded ? 8 : 0) |
-    (s.spin > 0 ? 16 : 0) | (s.shrink > 0 ? 32 : 0) | (s.shield > 0 ? 64 : 0) | (s.star > 0 ? 128 : 0) | (s.slip > 0 ? 256 : 0);
+    (s.spin > 0 ? 16 : 0) | (s.shrink > 0 ? 32 : 0) | (s.shield > 0 ? 64 : 0) | (s.star > 0 ? 128 : 0) | (s.slip > 0 ? 256 : 0) | (s.trick > 0 ? 512 : 0);
   return [
     +s.x.toFixed(2), +s.z.toFixed(2), +s.y.toFixed(2), +s.ground.toFixed(2),
     +s.heading.toFixed(3), +s.speed.toFixed(1), flags, +s.driftCharge.toFixed(2), s.lap, s.trackIndex,
@@ -337,6 +337,6 @@ export function unpackState(a) {
     drifting: !!(a[6] & 1), driftDir: a[6] & 1 ? (a[6] & 2 ? 1 : -1) : 0,
     boost: a[6] & 4 ? 1 : 0, grounded: !!(a[6] & 8), driftCharge: a[7], lap: a[8], trackIndex: a[9],
     spin: a[6] & 16 ? 1 : 0, shrink: a[6] & 32 ? 1 : 0, shield: a[6] & 64 ? 1 : 0, star: a[6] & 128 ? 1 : 0,
-    slip: a[6] & 256 ? 1 : 0, offset: a[10] ?? 0,
+    slip: a[6] & 256 ? 1 : 0, trick: a[6] & 512 ? 1 : 0, offset: a[10] ?? 0,
   };
 }

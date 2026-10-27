@@ -383,3 +383,65 @@ export class ItemWorld {
     return hits;
   }
 }
+
+// --- Coins --------------------------------------------------------------------------
+const COIN_RESPAWN = 10;
+
+export class Coins {
+  // lines: { at, offset, count } along the loop, or { branch, t, offset, count } along a side road.
+  // Coins in a line are 3 m apart.
+  constructor(track, lines) {
+    this.group = new THREE.Group();
+    this.coins = [];
+    const geo = new THREE.CylinderGeometry(0.75, 0.75, 0.18, 18);
+    geo.rotateX(Math.PI / 2);
+    const mat = new THREE.MeshLambertMaterial({ color: '#ffc531', emissive: '#7a5200' });
+    for (const line of lines) {
+      const path = line.branch != null ? track.branches[line.branch] : track;
+      const n = path.count;
+      const start = line.branch != null ? Math.round(line.t * (n - 1)) : Math.round(line.at * n);
+      const step = Math.max(1, Math.round(3 / path.spacing));
+      for (let k = 0; k < (line.count || 5); k++) {
+        const i = line.branch != null ? Math.min(n - 1, start + k * step) : (start + k * step) % n;
+        const c = path.points[i];
+        const s = path.sides[i];
+        const off = line.offset || 0;
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(c.x + s.x * off, c.y + 1.1, c.z + s.z * off);
+        mesh.castShadow = true;
+        this.group.add(mesh);
+        this.coins.push({ mesh, x: mesh.position.x, z: mesh.position.z, y: c.y, respawn: 0 });
+      }
+    }
+  }
+
+  reset() {
+    for (const c of this.coins) {
+      c.respawn = 0;
+      c.mesh.visible = true;
+    }
+  }
+
+  touching(s) {
+    for (let i = 0; i < this.coins.length; i++) {
+      const c = this.coins[i];
+      if (c.respawn > 0) continue;
+      if (Math.hypot(s.x - c.x, s.z - c.z) < 1.9 && Math.abs(s.ground + s.y - c.y) < 3) return i;
+    }
+    return -1;
+  }
+
+  take(i) {
+    const c = this.coins[i];
+    if (!c) return;
+    c.respawn = COIN_RESPAWN;
+    c.mesh.visible = false;
+  }
+
+  update(time, dt) {
+    for (const c of this.coins) {
+      if (c.respawn > 0 && (c.respawn -= dt) <= 0) c.mesh.visible = true;
+      c.mesh.rotation.y = time * 3;
+    }
+  }
+}

@@ -151,6 +151,13 @@ export class Audio {
         [523, 659, 784, 1047, 1319].forEach((f, i) => this.#tone(f, 0.15, { type: 'triangle', vol: 0.08, delay: i * 0.06 }));
         return;
       case 'slip': return this.#noise(0.5, { vol: 0.12, freq: 4000 });
+      case 'coin':
+        this.#tone(988, 0.07, { type: 'square', vol: 0.06 });
+        return this.#tone(1319, 0.18, { type: 'square', vol: 0.06, delay: 0.07 });
+      case 'launch': return this.#tone(160, 0.35, { type: 'triangle', slide: 2.2, vol: 0.12 });
+      case 'trick':
+        [660, 880, 1100].forEach((f, i) => this.#tone(f, 0.1, { type: 'triangle', vol: 0.09, delay: i * 0.05 }));
+        return;
     }
   }
 }

@@ -136,6 +136,8 @@ export class KartView {
 
     this.#buildSparks();
     this.spinAngle = 0;
+    this.trickAngle = 0;
+    this.wasTrick = false;
     this.size = 1;
     this.time = 0;
     this.visualYaw = 0;
@@ -244,7 +246,14 @@ export class KartView {
 
     const targetLean = (s.drifting ? s.driftDir * 0.12 : steer * 0.06) * Math.min(1, Math.abs(s.speed) / 15);
     this.lean += (targetLean - this.lean) * Math.min(1, dt * 8);
-    this.body.rotation.z = this.lean;
+    // Ramp trick: one barrel roll, started when the trick begins
+    if (s.trick > 0 && !this.wasTrick) this.trickAngle = 0.001;
+    this.wasTrick = s.trick > 0;
+    if (this.trickAngle > 0) {
+      this.trickAngle += dt * 15;
+      if (this.trickAngle >= Math.PI * 2) this.trickAngle = 0;
+    }
+    this.body.rotation.z = this.lean + this.trickAngle;
     this.body.position.y = s.y;
     this.body.rotation.x = s.boost > 0 ? -0.05 : 0;
     this.blob.scale.setScalar(1 - Math.min(0.4, s.y * 0.2));

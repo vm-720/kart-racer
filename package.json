@@ -16,6 +16,7 @@
   },
   "homepage": "https://github.com/vm-720/kart-racer#readme",
   "dependencies": {
+    "peerjs": "^1.5.4",
     "three": "^0.170.0"
   },
   "devDependencies": {

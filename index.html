@@ -20,6 +20,7 @@
         <div class="speed"><span id="speed">0</span><small>km/h</small></div>
         <div class="drift-meter"><div id="drift-fill"></div></div>
       </div>
+      <div id="place"></div>
       <div id="countdown"></div>
       <div id="toast"></div>
       <div id="now-playing"></div>
@@ -40,18 +41,58 @@
     <div id="menu" class="overlay">
       <div class="panel">
         <h1>Kart <span>Racer</span></h1>
-        <p class="sub">Castle Cloverleaf · prototype</p>
-        <button id="start-btn" class="big">Start race</button>
-        <div class="controls">
-          <div><kbd>W</kbd>/<kbd>↑</kbd> Accelerate</div>
-          <div><kbd>S</kbd>/<kbd>↓</kbd> Brake / reverse</div>
-          <div><kbd>A</kbd><kbd>D</kbd>/<kbd>←</kbd><kbd>→</kbd> Steer</div>
-          <div><kbd>Space</kbd>/<kbd>Shift</kbd> Hop &amp; drift</div>
-          <div><kbd>R</kbd> Respawn on track</div>
-          <div><kbd>M</kbd> Mute · <kbd>N</kbd> Next song</div>
+        <p class="sub">Castle Cloverleaf</p>
+
+        <div class="profile">
+          <label for="name-input">Your name</label>
+          <input id="name-input" maxlength="14" autocomplete="off" spellcheck="false" />
+          <div class="swatches" id="swatches" role="radiogroup" aria-label="Kart color"></div>
         </div>
-        <p class="tip">Hold drift while turning. Sparks go <b class="blue">blue</b>, <b class="orange">orange</b>, then <b class="purple">purple</b>. Let go for a boost!</p>
-        <p class="tip">Controllers work too.</p>
+
+        <div id="join-invite" class="invite hidden">
+          <p>You're invited to room <b id="invite-code"></b></p>
+          <button id="invite-btn" class="big">Join race</button>
+        </div>
+
+        <div class="menu-buttons">
+          <button id="create-btn" class="big">Race friends</button>
+          <button id="start-btn" class="big alt">Practice solo</button>
+        </div>
+        <form id="join-form" class="join-form">
+          <input id="code-input" placeholder="Room code" maxlength="5" autocomplete="off" spellcheck="false" />
+          <button type="submit" class="mid">Join</button>
+        </form>
+        <p id="menu-error" class="error hidden"></p>
+
+        <details class="help">
+          <summary>Controls</summary>
+          <div class="controls">
+            <div><kbd>W</kbd>/<kbd>↑</kbd> Accelerate</div>
+            <div><kbd>S</kbd>/<kbd>↓</kbd> Brake / reverse</div>
+            <div><kbd>A</kbd><kbd>D</kbd>/<kbd>←</kbd><kbd>→</kbd> Steer</div>
+            <div><kbd>Space</kbd>/<kbd>Shift</kbd> Hop &amp; drift</div>
+            <div><kbd>R</kbd> Respawn on track</div>
+            <div><kbd>M</kbd> Mute · <kbd>N</kbd> Next song</div>
+          </div>
+          <p class="tip">Hold drift while turning. Sparks go <b class="blue">blue</b>, <b class="orange">orange</b>, then <b class="purple">purple</b>. Let go for a boost! Controllers work too.</p>
+        </details>
+      </div>
+    </div>
+
+    <div id="lobby" class="overlay hidden">
+      <div class="panel">
+        <h2>Room <span id="room-code" class="code"></span></h2>
+        <p class="sub">Send this link to up to 3 friends</p>
+        <div class="link-row">
+          <input id="room-link" readonly />
+          <button id="copy-btn" class="mid">Copy</button>
+        </div>
+        <ul id="player-list" class="players"></ul>
+        <p id="lobby-status" class="sub"></p>
+        <div class="menu-buttons">
+          <button id="race-btn" class="big">Start race</button>
+          <button id="leave-btn" class="big alt">Leave</button>
+        </div>
       </div>
     </div>
 
@@ -59,7 +100,10 @@
       <div class="panel">
         <h1>Finish!</h1>
         <div id="results-body"></div>
-        <button id="again-btn" class="big">Race again</button>
+        <div class="menu-buttons">
+          <button id="again-btn" class="big">Race again</button>
+          <button id="menu-btn" class="big alt">Menu</button>
+        </div>
       </div>
     </div>
 

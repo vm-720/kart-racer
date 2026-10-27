@@ -132,6 +132,44 @@ export class KartView {
     this.nextSpark = 0;
   }
 
+  // Floating name above other players' karts.
+  setNameTag(name, color) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.font = '800 34px Nunito, sans-serif';
+    const w = Math.min(248, ctx.measureText(name).width + 34);
+    ctx.fillStyle = 'rgba(29, 27, 58, 0.75)';
+    ctx.beginPath();
+    ctx.roundRect((256 - w) / 2, 8, w, 48, 24);
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc((256 - w) / 2 + 20, 32, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff8e7';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name, 128 + 8, 33);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    tag.scale.set(4, 1, 1);
+    tag.position.y = 3.6;
+    tag.renderOrder = 10;
+    this.body.add(tag);
+  }
+
+  dispose(scene) {
+    scene.remove(this.group, this.sparks);
+    this.group.traverse((o) => {
+      o.geometry?.dispose();
+      o.material?.map?.dispose();
+      o.material?.dispose();
+    });
+  }
+
   // Sparks live in world space, so add them to the scene separately from the kart.
   get effects() {
     return this.sparks;

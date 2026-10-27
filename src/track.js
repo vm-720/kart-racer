@@ -89,7 +89,12 @@ export class Track {
     const c = this.points[best];
     const side = this.sides[best];
     const offset = (pos.x - c.x) * side.x + (pos.z - c.z) * side.z;
-    return { index: best, offset, center: c, side, tangent: this.tangents[best], height: c.y, slope: this.slopes[best] };
+    const tangent = this.tangents[best];
+    const slope = this.slopes[best];
+    // Blend height between samples so karts glide over hills instead of stepping
+    const along = (pos.x - c.x) * tangent.x + (pos.z - c.z) * tangent.z;
+    const height = Math.max(0, c.y + along * slope);
+    return { index: best, offset, center: c, side, tangent, height, slope };
   }
 
   // Start grid: two columns, staggered, behind the line.

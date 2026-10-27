@@ -17,6 +17,8 @@ export class KartView {
     const toon = (c) => new THREE.MeshToonMaterial({ color: c, gradientMap });
 
     const paint = toon(color);
+    this.paint = paint;
+    this.baseColor = new THREE.Color(color);
     const dark = toon('#2b2550');
     const chrome = toon('#d9dbe8');
 
@@ -110,7 +112,32 @@ export class KartView {
     this.group.add(blob);
     this.blob = blob;
 
+    // Bubble Shield
+    this.bubble = new THREE.Mesh(
+      new THREE.SphereGeometry(2.6, 20, 14),
+      new THREE.MeshBasicMaterial({ color: '#7fe3ff', transparent: true, opacity: 0.28, depthWrite: false }),
+    );
+    this.bubble.position.y = 1.3;
+    this.bubble.scale.set(1, 0.85, 1.2);
+    this.bubble.visible = false;
+    this.body.add(this.bubble);
+
+    // Slipstream wind lines
+    this.wind = new THREE.Group();
+    const windMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.6, depthWrite: false });
+    for (const [x, y] of [[-1.5, 0.8], [1.5, 0.8], [-1.1, 2.1], [1.1, 2.1], [0, 2.9]]) {
+      const line = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 3.2), windMat);
+      line.position.set(x, y, 0.5);
+      line.userData.phase = Math.random() * 3;
+      this.wind.add(line);
+    }
+    this.wind.visible = false;
+    this.body.add(this.wind);
+
     this.#buildSparks();
+    this.spinAngle = 0;
+    this.size = 1;
+    this.time = 0;
     this.visualYaw = 0;
     this.lean = 0;
     this.wheelSpin = 0;
@@ -190,7 +217,26 @@ export class KartView {
     // While drifting the kart swings sideways for that classic look
     const targetYaw = s.drifting ? s.driftDir * 0.42 : 0;
     this.visualYaw += (targetYaw - this.visualYaw) * Math.min(1, dt * 10);
-    this.group.rotation.y = s.heading - this.visualYaw;
+    // Spinning out after a hit: keep turning until a full circle is done
+    if (s.spin > 0 || this.spinAngle > 0) {
+      this.spinAngle += dt * 13;
+      if (!(s.spin > 0) && this.spinAngle >= Math.PI * 2) this.spinAngle = 0;
+      else this.spinAngle %= Math.PI * 2;
+    }
+    this.group.rotation.y = s.heading - this.visualYaw + this.spinAngle;
+    this.size += ((s.shrink > 0 ? 0.6 : 1) - this.size) * Math.min(1, dt * 8);
+    this.group.scale.setScalar(this.size);
+    this.time += dt;
+    this.bubble.visible = s.shield > 0;
+    if (s.star > 0) this.paint.color.setHSL((this.time * 1.5) % 1, 0.9, 0.6);
+    else this.paint.color.copy(this.baseColor);
+    this.wind.visible = s.slip > 0 || s.draftCharge > 0.15 && !s.drifting;
+    if (this.wind.visible) {
+      for (const l of this.wind.children) {
+        l.position.z = 2 - ((this.time * 14 + l.userData.phase * 2) % 5);
+        l.material.opacity = s.slip > 0 ? 0.7 : 0.35;
+      }
+    }
     const facingSlope = (s.slope || 0) * Math.cos(this.visualYaw);
     this.pitch += (-Math.atan(facingSlope) - this.pitch) * Math.min(1, dt * 10);
     this.group.rotation.x = this.pitch;
@@ -215,7 +261,7 @@ export class KartView {
 
     // Boost flames
     for (const f of this.flames) {
-      f.visible = s.boost > 0;
+      f.visible = s.boost > 0 || s.star > 0;
       if (f.visible) {
         f.scale.setScalar(0.8 + Math.random() * 0.6);
         f.material.color.set(Math.random() > 0.5 ? '#ffb000' : '#ff5a1f');

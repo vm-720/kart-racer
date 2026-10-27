@@ -6,6 +6,7 @@ const KEYS = {
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
   drift: ['Space', 'ShiftLeft', 'ShiftRight'],
+  item: ['KeyE', 'KeyF'],
 };
 
 export class Input {
@@ -36,6 +37,7 @@ export class Input {
       const key = btn.dataset.key;
       const on = (e) => {
         e.preventDefault();
+        if (key === 'item') this.pressedOnce.add('KeyE');
         this.touch.add(key);
         btn.classList.add('on');
       };
@@ -87,6 +89,8 @@ export class Input {
       drift = drift || b(4) || b(5);
       if (b(3) && !this.gpRespawnHeld) this.pressedOnce.add('KeyR');
       this.gpRespawnHeld = b(3);
+      if (b(2) && !this.gpItemHeld) this.pressedOnce.add('KeyE');
+      this.gpItemHeld = b(2);
     }
 
     // Ease keyboard steering in and out so the kart doesn't twitch

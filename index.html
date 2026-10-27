@@ -16,6 +16,9 @@
         <div class="laps" id="lap-times"></div>
       </div>
       <canvas id="minimap" width="180" height="180"></canvas>
+      <div id="mirror"></div>
+      <div id="item-slot"><div id="item-icon"></div><div id="item-count"></div><div id="item-name"></div></div>
+      <div id="flash"></div>
       <div class="hud-bottom-right">
         <div class="speed"><span id="speed">0</span><small>km/h</small></div>
         <div class="drift-meter"><div id="drift-fill"></div></div>
@@ -32,6 +35,7 @@
         <button data-key="right">▶</button>
       </div>
       <div class="touch-right">
+        <button data-key="item" class="small">ITEM</button>
         <button data-key="drift" class="small">DRIFT</button>
         <button data-key="brake" class="small">BRAKE</button>
         <button data-key="gas" class="gas">GO</button>
@@ -72,6 +76,7 @@
             <div><kbd>S</kbd>/<kbd>↓</kbd> Brake / reverse</div>
             <div><kbd>A</kbd><kbd>D</kbd>/<kbd>←</kbd><kbd>→</kbd> Steer</div>
             <div><kbd>Space</kbd>/<kbd>Shift</kbd> Hop &amp; drift</div>
+            <div><kbd>E</kbd>/<kbd>F</kbd> Use item</div>
             <div><kbd>R</kbd> Respawn on track</div>
             <div><kbd>M</kbd> Mute · <kbd>N</kbd> Next song</div>
             <div><kbd>-</kbd>/<kbd>+</kbd> Music volume</div>

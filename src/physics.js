@@ -21,6 +21,9 @@ export const TUNING = {
   driftLevels: [0.9, 2.0, 3.2], // seconds of charge for blue, orange, purple sparks
   driftBoosts: [0.7, 1.2, 1.8], // boost seconds awarded per level
   padBoost: 1.3,
+  slipSpeed: 1.08, // drafting: extra top speed while the slipstream burst lasts
+  rushSpeed: 1.15, // Rainbow Rush top speed multiplier
+  shrinkSpeed: 0.7, // top speed while zapped by a Thunder Cloud
   kartRadius: 1.1,
 };
 
@@ -47,6 +50,13 @@ export function createKartState({ position, heading, index }) {
     lap: 0, // 0 until the kart first crosses the start line
     lastSector: 3,
     speed: 0, // forward speed, handy for the HUD and visuals
+    // Item effects, each a countdown in seconds
+    spin: 0, // spun out: no control until it ends
+    shrink: 0, // zapped small and slow
+    star: 0, // Rainbow Rush: fast and untouchable
+    slip: 0, // slipstream burst from drafting
+    shield: 0, // Bubble Shield
+    draftCharge: 0,
     events: [], // one-frame notifications for sounds and effects
   };
 }
@@ -68,6 +78,15 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
     s.vx = s.vz = 0;
     s.speed = 0;
     return s;
+  }
+
+  for (const k of ['spin', 'shrink', 'star', 'slip', 'shield']) if (s[k] > 0) s[k] = Math.max(0, s[k] - dt);
+  if (s.spin > 0) {
+    input = { throttle: 0, brake: 0, steer: 0, drift: false };
+    s.drifting = false;
+    s.driftDir = 0;
+    s.driftCharge = 0;
+    vF *= Math.exp(-2.5 * dt);
   }
 
   const steer = Math.max(-1, Math.min(1, input.steer || 0));
@@ -121,7 +140,10 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
   }
 
   let maxSpeed = T.maxSpeed;
-  if (s.offroad) maxSpeed = s.boost > 0 ? T.maxSpeed * 0.85 : T.offroadMaxSpeed;
+  if (s.offroad && s.star <= 0) maxSpeed = s.boost > 0 ? T.maxSpeed * 0.85 : T.offroadMaxSpeed;
+  if (s.star > 0) maxSpeed *= T.rushSpeed;
+  if (s.slip > 0) maxSpeed *= T.slipSpeed;
+  if (s.shrink > 0) maxSpeed *= T.shrinkSpeed;
   if (s.boost > 0) {
     maxSpeed *= s.offroad ? 1 : T.boostSpeed;
     s.boost = Math.max(0, s.boost - dt);
@@ -130,7 +152,7 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
   // Engine, brakes and drag along the kart's facing direction
   const throttle = input.throttle || 0;
   const brake = input.brake || 0;
-  if (s.boost > 0) {
+  if (s.boost > 0 || (s.star > 0 && s.spin <= 0)) {
     vF = Math.min(vF + T.boostAccel * dt, maxSpeed);
   } else if (throttle > 0 && vF < maxSpeed) {
     const taper = 1 - 0.55 * Math.max(0, vF / maxSpeed);
@@ -226,6 +248,7 @@ export function respawn(s, track) {
   s.drifting = false;
   s.driftCharge = 0;
   s.boost = 0;
+  s.spin = 0;
 }
 
 // A single number for ranking racers: laps completed plus how far around the current lap.

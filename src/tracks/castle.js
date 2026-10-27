@@ -95,7 +95,7 @@ export function buildCastleTrack(gradientMap) {
   scene.add(buildTrees(track, toon));
   scene.add(buildHills(toon));
   scene.add(buildClouds());
-  return { track, scene, name: 'Castle Cloverleaf', focus: CASTLE_POS, fog: { color: '#cfe9ff', near: 320, far: 1400 } };
+  return { track, scene, name: 'Castle Cloverleaf', itemRows: [0.05, 0.42, 0.61, 0.93], focus: CASTLE_POS, fog: { color: '#cfe9ff', near: 320, far: 1400 } };
 }
 
 function crenellations(toon, width, depth, y, count, size = 1.6) {

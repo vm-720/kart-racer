@@ -149,6 +149,16 @@ export class Room {
         this.#relay({ t: 'finish', id: conn.peer, time: msg.time }, conn.peer);
         this.#emit('finish', conn.peer, msg.time);
         break;
+      case 'ev': {
+        const ev = { ...msg.ev, from: conn.peer };
+        if (msg.to === 'host' || msg.to === this.myId) this.#emit('event', ev);
+        else if (msg.to) this.conns.get(msg.to)?.send({ t: 'ev', ev });
+        else {
+          this.#relay({ t: 'ev', ev }, conn.peer);
+          this.#emit('event', ev);
+        }
+        break;
+      }
     }
   }
 
@@ -240,6 +250,9 @@ export class Room {
       case 'finish':
         this.#emit('finish', msg.id, msg.time);
         break;
+      case 'ev':
+        this.#emit('event', msg.ev);
+        break;
     }
   }
 
@@ -254,6 +267,16 @@ export class Room {
   sendState(s) {
     if (this.isHost) this.#relay({ t: 'state', id: this.myId, s });
     else if (this.hostConn?.open) this.hostConn.send({ t: 'state', s });
+  }
+
+  // Item events (boxes, rockets, hits). `to` sends to one player only; 'host' means the host.
+  sendEvent(ev, to = null) {
+    if (this.isHost) {
+      const msg = { t: 'ev', ev: { ...ev, from: this.myId } };
+      if (to === 'host' || to === this.myId) this.#emit('event', msg.ev);
+      else if (to) this.conns.get(to)?.open && this.conns.get(to).send(msg);
+      else this.#relay(msg);
+    } else if (this.hostConn?.open) this.hostConn.send({ t: 'ev', ev, to });
   }
 
   sendFinish(time) {
@@ -298,10 +321,13 @@ function clean(name) {
 
 // Kart state packed into a small array for sending ~20 times a second.
 export function packState(s) {
-  const flags = (s.drifting ? 1 : 0) | (s.driftDir > 0 ? 2 : 0) | (s.boost > 0 ? 4 : 0) | (s.grounded ? 8 : 0);
+  const flags =
+    (s.drifting ? 1 : 0) | (s.driftDir > 0 ? 2 : 0) | (s.boost > 0 ? 4 : 0) | (s.grounded ? 8 : 0) |
+    (s.spin > 0 ? 16 : 0) | (s.shrink > 0 ? 32 : 0) | (s.shield > 0 ? 64 : 0) | (s.star > 0 ? 128 : 0) | (s.slip > 0 ? 256 : 0);
   return [
     +s.x.toFixed(2), +s.z.toFixed(2), +s.y.toFixed(2), +s.ground.toFixed(2),
     +s.heading.toFixed(3), +s.speed.toFixed(1), flags, +s.driftCharge.toFixed(2), s.lap, s.trackIndex,
+    +s.offset.toFixed(2),
   ];
 }
 
@@ -310,5 +336,7 @@ export function unpackState(a) {
     x: a[0], z: a[1], y: a[2], ground: a[3], heading: a[4], speed: a[5],
     drifting: !!(a[6] & 1), driftDir: a[6] & 1 ? (a[6] & 2 ? 1 : -1) : 0,
     boost: a[6] & 4 ? 1 : 0, grounded: !!(a[6] & 8), driftCharge: a[7], lap: a[8], trackIndex: a[9],
+    spin: a[6] & 16 ? 1 : 0, shrink: a[6] & 32 ? 1 : 0, shield: a[6] & 64 ? 1 : 0, star: a[6] & 128 ? 1 : 0,
+    slip: a[6] & 256 ? 1 : 0, offset: a[10] ?? 0,
   };
 }

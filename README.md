@@ -16,17 +16,22 @@ PeerJS server only introduces the players, then race data goes straight between 
 | Brake / reverse | S / ↓ | B or LT |
 | Steer | A D / ← → | Left stick |
 | Hop and drift | Space / Shift | LB / RB |
+| Use item | E / F | X |
 | Respawn | R | Y |
 | Mute / next song | M / N | |
+| Music volume | - / + | |
 
 Hold drift while turning. Sparks go blue, then orange, then purple; let go for a mini-turbo.
+Drive through the "?" boxes for an item; racers further back get stronger ones. Tuck in close behind
+another kart for a moment to catch their slipstream and get a burst of speed.
 Phones and tablets get on-screen buttons.
 
 ## Roadmap
 
 1. **Drivable prototype** (done): one kart, drifting, boosts, the Castle Cloverleaf track, laps and timing.
 2. **Online races for up to 4** (done): create a room, share the link, race.
-3. **Characters, items and tracks**: original cast, oil slicks, rockets, boosts, plus the Space and Cave tracks.
+3. **Characters, items and tracks** (in progress): item boxes, 10 items, drafting and a rear-view mirror are in.
+   Next: ramps and tricks, coins, shortcuts and split paths, then the Space and Cave tracks and the driver cast.
 4. **Polish and launch**: menus, character select, sound, hosting.
 
 ## Developing
@@ -45,7 +50,8 @@ Code map:
 - `src/physics.js` – kart movement, drifting, walls and lap counting (no rendering, so it can run on a server later)
 - `src/track.js` – turns a centre line into a road, curbs, walls and boost pads
 - `src/tracks/castle.js` – Castle Cloverleaf layout and scenery
-- `src/kart.js` – the kart model, drift sparks and boost flames
+- `src/kart.js` – the kart model, drift sparks, boost flames and item effects (shield, spin-outs)
+- `src/items.js` – item boxes, item odds by race position, rockets, oil slicks and hit detection
 - `src/net.js` – online rooms: hosting, joining, relaying kart positions
 - `src/main.js` – game loop, camera, HUD, menus, lobby and race flow
 - `public/music/` – race soundtrack

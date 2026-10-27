@@ -6,10 +6,14 @@ import { createKartState, stepKart, respawn, driftLevel, raceProgress, TUNING } 
 import { Room, MAX_PLAYERS, KART_COLORS, packState, unpackState } from './net.js';
 import { buildCastleTrack } from './tracks/castle.js';
 import { skyTexture, toonGradient } from './textures.js';
+import { ITEMS, ITEM_IDS, ItemBoxes, ItemDirector, ItemWorld, rollItem } from './items.js';
 
 const PHYSICS_DT = 1 / 120;
 const SEND_INTERVAL = 1 / 20; // seconds between network updates
 const REMOTE_DELAY = 0.12; // render other karts slightly in the past so motion stays smooth
+const ROLL_TIME = 1.5; // seconds the item roulette spins
+const DRAFT_CHARGE = 0.75; // seconds behind someone before the slipstream kicks in
+const DRAFT_BURST = 1.5; // seconds of extra speed it gives
 const $ = (id) => document.getElementById(id);
 
 // --- Renderer and scene -------------------------------------------------------
@@ -52,6 +56,14 @@ const clouds = scene.getObjectByName('clouds');
 
 const input = new Input();
 const audio = new Audio();
+
+const boxes = new ItemBoxes(track, level.itemRows);
+const world = new ItemWorld(track);
+scene.add(boxes.group, world.group);
+let director = new ItemDirector();
+
+// Rear-view mirror: a second small camera looking backwards
+const mirrorCam = new THREE.PerspectiveCamera(55, 3, 0.5, 700);
 
 // --- Player profile -------------------------------------------------------------
 function loadProfile() {
@@ -137,6 +149,15 @@ let room = null;
 let mySlot = 0;
 let myFinish = null;
 let sendTimer = 0;
+// Items held by the local player
+let held = null; // item id, or null
+let heldUses = 0;
+let rolling = 0; // seconds of roulette left
+let rollActive = false;
+let rollStarted = 0;
+let rollResult = null;
+let rollTick = 0;
+let itemSeq = 0;
 const racers = new Map(); // other players: id -> { name, color, slot, view, snaps, state, finish }
 const prev = { x: 0, z: 0, y: 0, ground: 0, heading: 0 }; // kart state before the last physics step
 
@@ -172,6 +193,16 @@ function resetRace(slot = 0) {
   lastCount = -1;
   raceTime = 0;
   lapTimes = [];
+  held = null;
+  heldUses = 0;
+  rolling = 0;
+  rollActive = false;
+  rollResult = null;
+  itemSeq = 0;
+  director = new ItemDirector();
+  world.clear();
+  boxes.reset();
+  renderItemSlot();
   camHeading = kart.heading;
   placeCamera(1);
   $('lap-total').textContent = track.laps;
@@ -257,6 +288,7 @@ function wireRoom(r) {
       if (r2) r2.finish = time;
       if (phase === 'finished') showResults();
     })
+    .on('event', (ev) => onItemEvent(ev))
     .on('left', (id) => removeRacer(id))
     .on('closed', (reason) => backToMenu(reason));
 }
@@ -484,6 +516,252 @@ function standings() {
 
 function ordinal(n) {
   return n + (['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] || 'th');
+}
+
+// --- Items ----------------------------------------------------------------------
+function myId() {
+  return room ? room.myId : 'me';
+}
+
+function stateOf(id) {
+  if (id === myId()) return kart;
+  return racers.get(id)?.state || null;
+}
+
+function idOf(entry) {
+  return entry.me ? myId() : entry.id;
+}
+
+function myPlace() {
+  const list = standings();
+  const i = list.findIndex((x) => x.me);
+  return { place: i + 1, count: list.length, gap: Math.max(0, list[0].progress - list[i].progress) };
+}
+
+function startRoll() {
+  rolling = ROLL_TIME;
+  rollActive = true;
+  rollStarted = raceTime;
+  rollResult = null;
+  const request = myPlace();
+  if (!room || room.isHost) rollResult = director.grant(request);
+  else room.sendEvent({ k: 'roll', ...request }, 'host');
+}
+
+function updateRoll(dt) {
+  if (!rollActive) return;
+  rolling -= dt;
+  // If the host is slow to answer, fall back to rolling here so the roulette never hangs
+  if (rollResult === null && raceTime - rollStarted > 4) rollResult = rollItem(myPlace());
+  if (rolling > 0 || rollResult === null) {
+    if ((rollTick -= dt) <= 0) {
+      rollTick = 0.08;
+      renderItemSlot(ITEM_IDS[Math.floor(Math.random() * ITEM_IDS.length)]);
+      audio.play('roll');
+    }
+    return;
+  }
+  held = rollResult;
+  heldUses = ITEMS[held].uses;
+  rollResult = null;
+  rollActive = false;
+  audio.play('got');
+  renderItemSlot();
+  $('item-slot').classList.remove('ready');
+  void $('item-slot').offsetWidth;
+  $('item-slot').classList.add('ready');
+}
+
+function renderItemSlot(spinning = null) {
+  const id = spinning || held;
+  $('item-slot').classList.toggle('rolling', !!spinning);
+  $('item-icon').textContent = id ? ITEMS[id].icon : '';
+  $('item-count').textContent = !spinning && held && heldUses > 1 ? `×${heldUses}` : '';
+  $('item-name').textContent = !spinning && held ? ITEMS[held].name : '';
+}
+
+function spawnItem(kind, extra = {}) {
+  const sinH = Math.sin(kart.heading);
+  const cosH = Math.cos(kart.heading);
+  const tan = track.tangents[kart.trackIndex];
+  const side = track.sides[kart.trackIndex];
+  const dir = sinH * tan.x + cosH * tan.z >= 0 ? 1 : -1;
+  const spec = { id: `${mySlot}-${++itemSeq}`, kind, owner: myId(), dir, ...extra };
+  if (kind === 'oil') {
+    spec.x = kart.x - sinH * 3;
+    spec.z = kart.z - cosH * 3;
+    spec.y = kart.ground;
+  } else {
+    const speed = { rocket: 70, homing: 75, seeker: 85 }[kind];
+    spec.idx = kart.trackIndex + (dir * 3) / track.spacing;
+    spec.off = kart.offset;
+    spec.vOff = kind === 'rocket' ? Math.max(-15, Math.min(15, (sinH * side.x + cosH * side.z) * speed)) : 0;
+  }
+  world.spawn(spec);
+  room?.sendEvent({ k: 'spawn', spec });
+}
+
+function useItem() {
+  const list = standings();
+  const i = list.findIndex((x) => x.me);
+  switch (held) {
+    case 'oil':
+    case 'oil3':
+      spawnItem('oil');
+      audio.play('drop');
+      break;
+    case 'rocket':
+      spawnItem('rocket');
+      audio.play('fire');
+      break;
+    case 'homing':
+    case 'rockets3':
+      spawnItem('homing', { target: i > 0 ? idOf(list[i - 1]) : null });
+      audio.play('fire');
+      break;
+    case 'seeker': {
+      const leader = list.find((x) => !x.me && x.finish == null);
+      spawnItem('seeker', { target: leader ? idOf(leader) : null });
+      audio.play('fire');
+      break;
+    }
+    case 'turbo':
+      kart.boost = Math.max(kart.boost, 1.6);
+      audio.play('boost');
+      break;
+    case 'shield':
+      kart.shield = 8;
+      audio.play('shield');
+      break;
+    case 'thunder':
+      flash();
+      audio.play('thunder');
+      room?.sendEvent({ k: 'thunder', progress: raceProgress(kart, track) });
+      break;
+    case 'rush':
+      kart.star = 7;
+      kart.spin = 0;
+      audio.play('rush');
+      break;
+  }
+  if (--heldUses <= 0) held = null;
+  renderItemSlot();
+}
+
+// Something hit the local kart. Returns false if the hit was shrugged off.
+function takeHit(kind) {
+  if (kart.star > 0) return false;
+  if (kart.shield > 0) {
+    kart.shield = 0;
+    audio.play('pop');
+    return false;
+  }
+  const spin = { oil: 1.0, rocket: 1.2, homing: 1.2, seeker: 1.6, rush: 1.0, thunder: 0.6 }[kind] || 1;
+  const pop = { rocket: 7, homing: 7, seeker: 10, rush: 5 }[kind] || 0;
+  kart.spin = Math.max(kart.spin, spin);
+  if (pop) {
+    kart.vy = pop;
+    kart.grounded = false;
+  }
+  if (kind === 'thunder') kart.shrink = 3;
+  audio.play(kind === 'oil' || kind === 'thunder' ? 'spin' : 'boom');
+  return true;
+}
+
+function checkItemHits() {
+  for (const t of world.hitsOn(kart, myId())) {
+    takeHit(t.kind);
+    world.remove(t.id, t.kind !== 'oil');
+    const boom = t.kind === 'seeker' ? { x: kart.x, z: kart.z, y: kart.ground } : null;
+    room?.sendEvent({ k: 'hit', id: t.id, boom });
+  }
+  // Touching a racer in Rainbow Rush knocks you flying
+  for (const r of racers.values()) {
+    const o = r.state;
+    if (o.star && Math.hypot(kart.x - o.x, kart.z - o.z) < 2.8 && kart.spin <= 0) takeHit('rush');
+  }
+}
+
+function checkBoom(b) {
+  if (Math.hypot(kart.x - b.x, kart.z - b.z) < 8 && Math.abs(kart.ground - b.y) < 4) takeHit('seeker');
+}
+
+function onItemEvent(ev) {
+  switch (ev.k) {
+    case 'box':
+      boxes.take(ev.i);
+      break;
+    case 'roll':
+      if (room?.isHost) room.sendEvent({ k: 'rolled', item: director.grant(ev) }, ev.from);
+      break;
+    case 'rolled':
+      if (rollActive) rollResult = ev.item;
+      break;
+    case 'spawn':
+      world.spawn(ev.spec);
+      break;
+    case 'hit': {
+      const t = world.remove(ev.id, true);
+      if (t && t.kind !== 'oil' && Math.hypot(t.x - kart.x, t.z - kart.z) < 60) audio.play('boom');
+      if (ev.boom && phase !== 'menu') checkBoom(ev.boom);
+      break;
+    }
+    case 'thunder':
+      if (phase === 'menu') break;
+      flash();
+      audio.play('thunder');
+      if (raceProgress(kart, track) > ev.progress && myFinish == null) takeHit('thunder');
+      break;
+  }
+}
+
+let flashTimer;
+function flash() {
+  $('flash').classList.add('on');
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => $('flash').classList.remove('on'), 120);
+}
+
+// Slipstream: tuck in behind another kart to charge a short burst of speed.
+function updateDraft(dt) {
+  let tucked = false;
+  if (kart.slip <= 0 && kart.speed > 15 && kart.spin <= 0) {
+    for (const r of racers.values()) {
+      const o = r.state;
+      if (!(o.speed > 15) || Math.abs(o.ground - kart.ground) > 2) continue;
+      const fx = Math.sin(o.heading);
+      const fz = Math.cos(o.heading);
+      const dx = kart.x - o.x;
+      const dz = kart.z - o.z;
+      const behind = -(dx * fx + dz * fz);
+      const lateral = Math.abs(dx * fz - dz * fx);
+      if (behind > 2 && behind < 20 && lateral < 3) tucked = true;
+    }
+  }
+  if (tucked) {
+    kart.draftCharge += dt;
+    if (kart.draftCharge >= DRAFT_CHARGE) {
+      kart.slip = DRAFT_BURST;
+      kart.draftCharge = 0;
+      audio.play('slip');
+    }
+  } else kart.draftCharge = Math.max(0, kart.draftCharge - dt);
+}
+
+function updateItems(dt) {
+  world.update(dt, stateOf);
+  if (phase === 'menu' || phase === 'countdown') return;
+  const box = boxes.touching(kart);
+  if (box >= 0) {
+    boxes.take(box);
+    room?.sendEvent({ k: 'box', i: box });
+    audio.play('box');
+    if (!held && !rollActive && phase === 'racing') startRoll();
+  }
+  updateRoll(dt);
+  if ((input.consume('KeyE') | input.consume('KeyF')) && held && phase === 'racing' && kart.spin <= 0) useItem();
+  checkItemHits();
+  if (phase === 'racing') updateDraft(dt);
 }
 
 // --- Camera ---------------------------------------------------------------------
@@ -724,6 +1002,7 @@ function frame(now) {
     handleEvents();
 
     for (const r of racers.values()) updateRemote(r, dt);
+    updateItems(dt);
     if (room) {
       sendTimer += dt;
       if (sendTimer >= SEND_INTERVAL) {
@@ -757,6 +1036,7 @@ function frame(now) {
   if (toastTimer > 0 && (toastTimer -= dt) <= 0) $('toast').classList.remove('show');
 
   track.update(elapsed);
+  boxes.update(elapsed, dt);
   for (const w of wavers) w.rotation.y = Math.sin(elapsed * 3 + w.id) * 0.25;
   if (clouds) clouds.rotation.y = elapsed * 0.004;
 
@@ -771,8 +1051,35 @@ function frame(now) {
   sun.position.copy(focus).add(SUN_OFFSET);
   sun.target.position.copy(focus);
 
+  renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
   renderer.render(scene, camera);
+  if (phase !== 'menu' && !$('hud').classList.contains('hidden')) renderMirror();
   requestAnimationFrame(frame);
+}
+
+function renderMirror() {
+  const el = $('mirror');
+  const rect = el.getBoundingClientRect();
+  const b = el.clientLeft;
+  const w = el.clientWidth;
+  const h = el.clientHeight;
+  if (w < 10) return;
+  const x = rect.left + b;
+  const y = window.innerHeight - (rect.top + b) - h;
+  const fx = Math.sin(kart.heading);
+  const fz = Math.cos(kart.heading);
+  const top = kart.ground + kart.y;
+  mirrorCam.position.set(kart.x - fx * 0.6, top + 3.3, kart.z - fz * 0.6);
+  mirrorCam.lookAt(kart.x - fx * 30, top + 1.2, kart.z - fz * 30);
+  mirrorCam.aspect = w / h;
+  mirrorCam.updateProjectionMatrix();
+  renderer.setScissorTest(true);
+  renderer.setScissor(x, y, w, h);
+  renderer.setViewport(x, y, w, h);
+  renderer.shadowMap.autoUpdate = false; // reuse the shadows from the main view
+  renderer.render(scene, mirrorCam);
+  renderer.shadowMap.autoUpdate = true;
+  renderer.setScissorTest(false);
 }
 
 window.addEventListener('resize', () => {
@@ -795,4 +1102,5 @@ if (invite && /^[A-Za-z0-9]{5}$/.test(invite)) {
 requestAnimationFrame(frame);
 
 // Handy for debugging from the browser console.
-window.__game = { get kart() { return kart; }, track, racers, audio, get room() { return room; } };
+window.__game = { get kart() { return kart; }, get time() { return raceTime; }, track, racers, audio, world, boxes,
+  give(id) { held = id; heldUses = ITEMS[id].uses; renderItemSlot(); }, get room() { return room; } };

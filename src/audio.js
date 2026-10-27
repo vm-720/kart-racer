@@ -96,6 +96,28 @@ export class Audio {
     o.stop(t + dur + 0.02);
   }
 
+  #noise(dur, { vol = 0.3, freq = 800, delay = 0 } = {}) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + delay;
+    if (!this.noiseBuf) {
+      this.noiseBuf = this.ctx.createBuffer(1, this.ctx.sampleRate, this.ctx.sampleRate);
+      const d = this.noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(freq, t);
+    f.frequency.exponentialRampToValueAtTime(60, t + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t);
+    src.stop(t + dur + 0.05);
+  }
+
   play(name) {
     switch (name) {
       case 'hop': return this.#tone(300, 0.12, { slide: 1.8, vol: 0.08 });
@@ -109,6 +131,26 @@ export class Audio {
       case 'finish':
         [523, 659, 784, 1047].forEach((f, i) => this.#tone(f, 0.35, { vol: 0.12, delay: i * 0.14 }));
         return;
+      case 'box': return this.#tone(1200, 0.12, { type: 'triangle', vol: 0.12, slide: 1.5 });
+      case 'roll': return this.#tone(700 + Math.random() * 500, 0.04, { type: 'triangle', vol: 0.05 });
+      case 'got':
+        this.#tone(784, 0.1, { type: 'triangle', vol: 0.12 });
+        return this.#tone(1175, 0.2, { type: 'triangle', vol: 0.12, delay: 0.09 });
+      case 'fire':
+        this.#noise(0.35, { vol: 0.15, freq: 3000 });
+        return this.#tone(220, 0.3, { type: 'sawtooth', slide: 2.5, vol: 0.06 });
+      case 'drop': return this.#tone(260, 0.2, { type: 'sine', slide: 0.4, vol: 0.2 });
+      case 'boom': return this.#noise(0.6, { vol: 0.45, freq: 1200 });
+      case 'spin': return this.#tone(500, 0.8, { type: 'triangle', slide: 0.3, vol: 0.12 });
+      case 'shield': return this.#tone(400, 0.4, { type: 'sine', slide: 2, vol: 0.15 });
+      case 'pop': return this.#tone(900, 0.15, { type: 'sine', slide: 0.5, vol: 0.18 });
+      case 'thunder':
+        this.#noise(1.2, { vol: 0.5, freq: 2500 });
+        return this.#tone(70, 0.8, { type: 'sawtooth', vol: 0.1 });
+      case 'rush':
+        [523, 659, 784, 1047, 1319].forEach((f, i) => this.#tone(f, 0.15, { type: 'triangle', vol: 0.08, delay: i * 0.06 }));
+        return;
+      case 'slip': return this.#noise(0.5, { vol: 0.12, freq: 4000 });
     }
   }
 }

@@ -1,14 +1,14 @@
 // Sound: a synthesized engine hum and effect blips, plus the race soundtrack from public/music.
 
 const SONGS = ['aware', 'more', 'lights', 'legacy', 'hold', 'falling', 'drank'];
-const MUSIC_VOLUME = 0.35;
+const MUSIC_MAX = 0.7; // music volume at 100% on the slider
 
 export class Audio {
   constructor() {
     this.ctx = null;
     this.muted = false;
     this.music = new window.Audio();
-    this.music.volume = MUSIC_VOLUME;
+    this.setMusicVolume(0.5);
     this.music.addEventListener('ended', () => this.nextSong());
     // Shuffle once so each session plays the songs in a fresh order
     this.playlist = [...SONGS].sort(() => Math.random() - 0.5);
@@ -43,12 +43,26 @@ export class Audio {
     this.engineFilter.type = 'lowpass';
     this.engineFilter.frequency.value = 600;
     this.engineGain = this.ctx.createGain();
-    this.engineGain.gain.value = 0.06;
+    this.engineGain.gain.value = 0;
+    this.engineOn = false;
     this.engine.connect(this.engineFilter);
     this.engine2.connect(this.engineFilter);
     this.engineFilter.connect(this.engineGain).connect(this.master);
     this.engine.start();
     this.engine2.start();
+  }
+
+  // level runs from 0 (silent) to 1 (loudest)
+  setMusicVolume(level) {
+    this.musicLevel = Math.max(0, Math.min(1, level));
+    this.music.volume = this.musicLevel * MUSIC_MAX;
+  }
+
+  // The engine hum only plays while you're driving, not in menus or the lobby.
+  setEngineActive(on) {
+    if (!this.ctx || this.engineOn === on) return;
+    this.engineOn = on;
+    this.engineGain.gain.setTargetAtTime(on ? 0.06 : 0, this.ctx.currentTime, 0.08);
   }
 
   toggleMute() {

@@ -184,3 +184,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 #results-body .row.me { color: var(--red); }
 #results-body .standings .row { max-width: 300px; }
 @media (pointer: coarse) { #place { bottom: auto; top: 120px; font-size: 52px; } }
+
+.volume { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 16px; font-weight: 800; font-size: 14px; }
+.volume input { width: 180px; accent-color: var(--red); cursor: pointer; }

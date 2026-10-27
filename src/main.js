@@ -102,6 +102,26 @@ refreshSwatches();
 let kartView = new KartView({ color: profile.color, gradientMap });
 scene.add(kartView.group, kartView.effects);
 
+// --- Music volume -------------------------------------------------------------
+const volumeSliders = [...document.querySelectorAll('.music-volume')];
+function setVolume(level, announce = false) {
+  audio.setMusicVolume(level);
+  for (const el of volumeSliders) el.value = Math.round(audio.musicLevel * 100);
+  try {
+    localStorage.setItem('music-volume', String(audio.musicLevel));
+  } catch {
+    /* storage unavailable; volume just won't persist */
+  }
+  if (announce) toast(`Music ${Math.round(audio.musicLevel * 100)}%`, 1);
+}
+for (const el of volumeSliders) el.addEventListener('input', () => setVolume(el.value / 100));
+try {
+  const saved = localStorage.getItem('music-volume');
+  setVolume(saved === null ? audio.musicLevel : Number(saved));
+} catch {
+  setVolume(audio.musicLevel);
+}
+
 // --- Race state ---------------------------------------------------------------
 let kart;
 let phase = 'menu'; // menu | countdown | racing | finished
@@ -660,6 +680,9 @@ function frame(now) {
 
   if (input.consume('KeyM')) toast(audio.toggleMute() ? 'Sound off' : 'Sound on', 1);
   if (input.consume('KeyN') && phase !== 'menu') nowPlaying(audio.nextSong());
+  if (input.consume('Minus') || input.consume('NumpadSubtract')) setVolume(audio.musicLevel - 0.1, true);
+  if (input.consume('Equal') || input.consume('NumpadAdd')) setVolume(audio.musicLevel + 0.1, true);
+  audio.setEngineActive(phase !== 'menu' && $('results').classList.contains('hidden'));
 
   if (phase !== 'menu') {
     const raw = input.read(dt);
@@ -772,4 +795,4 @@ if (invite && /^[A-Za-z0-9]{5}$/.test(invite)) {
 requestAnimationFrame(frame);
 
 // Handy for debugging from the browser console.
-window.__game = { get kart() { return kart; }, track, racers, get room() { return room; } };
+window.__game = { get kart() { return kart; }, track, racers, audio, get room() { return room; } };

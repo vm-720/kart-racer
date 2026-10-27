@@ -4,6 +4,7 @@
 export const TUNING = {
   maxSpeed: 42, // m/s on road (~151 km/h)
   offroadMaxSpeed: 18,
+  dirtMaxSpeed: 20, // shortcuts: slower than the road unless you boost through
   accel: 32,
   brake: 45,
   reverseMax: 10,
@@ -24,6 +25,10 @@ export const TUNING = {
   slipSpeed: 1.08, // drafting: extra top speed while the slipstream burst lasts
   rushSpeed: 1.15, // Rainbow Rush top speed multiplier
   shrinkSpeed: 0.7, // top speed while zapped by a Thunder Cloud
+  coinSpeed: 0.006, // extra top speed per coin held (up to 10)
+  maxCoins: 10,
+  trickBoost: 0.9, // boost seconds for landing a ramp trick
+  launch: 0.9, // how much of the ramp's angle carries into the jump
   kartRadius: 1.1,
 };
 
@@ -57,6 +62,13 @@ export function createKartState({ position, heading, index }) {
     slip: 0, // slipstream burst from drafting
     shield: 0, // Bubble Shield
     draftCharge: 0,
+    coins: 0,
+    trick: 0, // seconds left of the trick animation
+    surface: 0, // 0 = main loop, 1+ = a side road
+    rampH: 0, // height of the ramp under the kart
+    rampSlope: 0,
+    rampAir: false, // flying off a ramp (a trick is possible)
+    tricked: false,
     events: [], // one-frame notifications for sounds and effects
   };
 }
@@ -80,7 +92,7 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
     return s;
   }
 
-  for (const k of ['spin', 'shrink', 'star', 'slip', 'shield']) if (s[k] > 0) s[k] = Math.max(0, s[k] - dt);
+  for (const k of ['spin', 'shrink', 'star', 'slip', 'shield', 'trick']) if (s[k] > 0) s[k] = Math.max(0, s[k] - dt);
   if (s.spin > 0) {
     input = { throttle: 0, brake: 0, steer: 0, drift: false };
     s.drifting = false;
@@ -98,12 +110,23 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
     s.vy = T.hopSpeed;
     s.grounded = false;
     s.events.push('hop');
+  } else if (driftPressed && s.rampAir && !s.tricked) {
+    // A trick in mid-air after a ramp, paid out as a boost on landing
+    s.tricked = true;
+    s.trick = 0.45;
+    s.events.push('trick');
   }
   s.vy -= T.gravity * dt;
   s.y += s.vy * dt;
   if (s.y <= 0) {
     if (!s.grounded) {
       s.grounded = true;
+      if (s.rampAir && s.tricked) {
+        s.boost = Math.max(s.boost, T.trickBoost);
+        s.events.push('boost');
+      }
+      s.rampAir = false;
+      s.tricked = false;
       if (s.driftHeld && Math.abs(steer) > 0.25 && vF > 10 && !s.drifting) {
         s.drifting = true;
         s.driftDir = Math.sign(steer);
@@ -132,9 +155,15 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
   }
 
   // Surface
-  const q = track.query({ x: s.x, z: s.z }, s.trackIndex);
-  s.offroad = Math.abs(q.offset) > track.halfWidth + 1.6;
-  if (s.grounded && track.onBoostPad(q.index, q.offset)) {
+  const here = track.locate({ x: s.x, z: s.z }, s.trackIndex, s.surface);
+  const q = here.main;
+  const side = here.branch;
+  s.dirt = !!side && side.surface === 'dirt' && Math.abs(here.q.offset) <= side.halfWidth + 0.5;
+  s.offroad =
+    here.surface === 0
+      ? Math.abs(q.offset) > track.halfWidth + 1.6
+      : !s.dirt && Math.abs(here.q.offset) > side.halfWidth + 1.6;
+  if (s.grounded && here.surface === 0 && track.onBoostPad(q.index, q.offset)) {
     if (s.boost < 0.2) s.events.push('boost');
     s.boost = Math.max(s.boost, T.padBoost);
   }
@@ -144,8 +173,10 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
   if (s.star > 0) maxSpeed *= T.rushSpeed;
   if (s.slip > 0) maxSpeed *= T.slipSpeed;
   if (s.shrink > 0) maxSpeed *= T.shrinkSpeed;
+  maxSpeed *= 1 + Math.min(s.coins, T.maxCoins) * T.coinSpeed;
+  if (s.dirt && s.star <= 0) maxSpeed = T.dirtMaxSpeed;
   if (s.boost > 0) {
-    maxSpeed *= s.offroad ? 1 : T.boostSpeed;
+    maxSpeed = s.dirt ? T.maxSpeed * T.boostSpeed : maxSpeed * (s.offroad ? 1 : T.boostSpeed);
     s.boost = Math.max(0, s.boost - dt);
   }
 
@@ -164,11 +195,11 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
     const drag = T.coastDrag * dt;
     vF = Math.abs(vF) < drag ? 0 : vF - Math.sign(vF) * drag;
   }
-  if (vF > maxSpeed) vF = Math.max(maxSpeed, vF - (s.offroad ? 40 : 12) * dt);
-  if (s.grounded) {
+  if (vF > maxSpeed) vF = Math.max(maxSpeed, vF - (s.offroad ? 40 : s.dirt ? 30 : 12) * dt);
+  if (s.grounded && s.rampH === 0) {
     // Gravity along the slope, measured in the direction the kart is facing
-    const facing = sinH * q.tangent.x + cosH * q.tangent.z;
-    vF -= T.gravity * T.slopeGravity * q.slope * facing * dt;
+    const facing = sinH * here.q.tangent.x + cosH * here.q.tangent.z;
+    vF -= T.gravity * T.slopeGravity * here.q.slope * facing * dt;
   }
 
   // Steering
@@ -192,30 +223,67 @@ export function stepKart(s, input, dt, track, { frozen = false } = {}) {
   s.z += s.vz * dt;
 
   // Walls: slide along them and lose a little speed
-  const q2 = track.query({ x: s.x, z: s.z }, q.index);
-  const limit = track.wallOffset - T.kartRadius;
-  if (Math.abs(q2.offset) > limit) {
+  let loc = track.locate({ x: s.x, z: s.z }, q.index, here.surface);
+  if (!loc.inside) {
+    const q2 = loc.q;
+    const limit = (loc.branch ? loc.branch.wallOffset : track.wallOffset) - T.kartRadius;
     const sign = Math.sign(q2.offset);
     const push = Math.abs(q2.offset) - limit;
-    s.x -= q2.side.x * push * sign;
-    s.z -= q2.side.z * push * sign;
-    const into = (s.vx * q2.side.x + s.vz * q2.side.z) * sign;
-    if (into > 0) {
-      s.vx -= q2.side.x * into * sign * 1.4;
-      s.vz -= q2.side.z * into * sign * 1.4;
-      s.vx *= 0.93;
-      s.vz *= 0.93;
-      if (into > 6) s.events.push('bump');
+    if (push > 0) {
+      s.x -= q2.side.x * push * sign;
+      s.z -= q2.side.z * push * sign;
+      bounce(s, q2.side.x * sign, q2.side.z * sign);
+    }
+    loc = track.locate({ x: s.x, z: s.z }, q.index, here.surface);
+  }
+  // Barrels and other things to steer around
+  for (const o of track.obstacles) {
+    const dx = s.x - o.x;
+    const dz = s.z - o.z;
+    const d = Math.hypot(dx, dz);
+    const min = o.r + T.kartRadius;
+    if (d < min && d > 0.001 && s.ground + s.y < o.y + 2.6) {
+      s.x += (dx / d) * (min - d);
+      s.z += (dz / d) * (min - d);
+      bounce(s, -dx / d, -dz / d);
     }
   }
-  s.trackIndex = q2.index;
-  s.offset = q2.offset;
-  s.ground = q2.height;
-  s.slope = q2.slope;
+  s.surface = loc.surface;
+  s.trackIndex = track.lapIndex(loc);
+  s.offset = loc.surface === 0 ? loc.q.offset : 0;
+
+  // Ramps: the ground rises under the kart, then drops away at the lip and launches it
+  const ramp = loc.surface === 0 ? track.rampAt(loc.q.index, loc.q.offset) : null;
+  const rampH = ramp ? ramp.h : 0;
+  if (rampH < s.rampH - 0.3 && s.grounded) {
+    const fwd = s.vx * Math.sin(s.heading) + s.vz * Math.cos(s.heading);
+    s.grounded = false;
+    s.vy = fwd > 5 ? fwd * s.rampSlope * T.launch : 0;
+    s.rampAir = fwd > 5;
+    s.tricked = false;
+    if (s.rampAir) s.events.push('launch');
+  }
+  // Keep the kart's height in the world steady when the ground under it jumps
+  if (!s.grounded) s.y = Math.max(0, s.y + s.rampH - rampH);
+  s.rampH = rampH;
+  s.rampSlope = ramp ? ramp.slope : 0;
+  s.ground = loc.q.height + rampH;
+  s.slope = ramp ? ramp.slope : loc.q.slope;
   s.speed = s.vx * Math.sin(s.heading) + s.vz * Math.cos(s.heading);
 
   updateLap(s, track);
   return s;
+}
+
+// Knock the kart back from a wall or obstacle whose surface faces (-nx, -nz).
+function bounce(s, nx, nz) {
+  const into = s.vx * nx + s.vz * nz;
+  if (into <= 0) return;
+  s.vx -= nx * into * 1.4;
+  s.vz -= nz * into * 1.4;
+  s.vx *= 0.93;
+  s.vz *= 0.93;
+  if (into > 6) s.events.push('bump');
 }
 
 // The loop is split into four sectors that must be passed in order,
@@ -249,6 +317,9 @@ export function respawn(s, track) {
   s.driftCharge = 0;
   s.boost = 0;
   s.spin = 0;
+  s.surface = 0;
+  s.rampH = 0;
+  s.rampAir = false;
 }
 
 // A single number for ranking racers: laps completed plus how far around the current lap.

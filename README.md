@@ -22,7 +22,8 @@ PeerJS server only introduces the players, then race data goes straight between 
 | Music volume | - / + | |
 
 Hold drift while turning. Sparks go blue, then orange, then purple; let go for a mini-turbo.
-Drive through the "?" boxes for an item; racers further back get stronger ones. Tuck in close behind
+Hit the hop button in mid-air off a ramp to do a trick and land with a boost. Coins add a little top speed
+(up to 10; you drop 3 when hit). Drive through the "?" boxes for an item; racers further back get stronger ones. Tuck in close behind
 another kart for a moment to catch their slipstream and get a burst of speed.
 Phones and tablets get on-screen buttons.
 
@@ -30,8 +31,9 @@ Phones and tablets get on-screen buttons.
 
 1. **Drivable prototype** (done): one kart, drifting, boosts, the Castle Cloverleaf track, laps and timing.
 2. **Online races for up to 4** (done): create a room, share the link, race.
-3. **Characters, items and tracks** (in progress): item boxes, 10 items, drafting and a rear-view mirror are in.
-   Next: ramps and tricks, coins, shortcuts and split paths, then the Space and Cave tracks and the driver cast.
+3. **Characters, items and tracks** (in progress): item boxes, 10 items, drafting, a rear-view mirror, ramps
+   and tricks, coins, a dirt shortcut and a split path are in. Next: the Space and Cave tracks and the driver cast.
+   Logged for later: glide gaps, moving hazards (drawbridge, barrels, asteroids, stalactites, minecarts).
 4. **Polish and launch**: menus, character select, sound, hosting.
 
 ## Developing
@@ -48,7 +50,8 @@ To test online play without the public PeerJS server, run a local one
 Code map:
 
 - `src/physics.js` – kart movement, drifting, walls and lap counting (no rendering, so it can run on a server later)
-- `src/track.js` – turns a centre line into a road, curbs, walls and boost pads
+- `src/track.js` – turns a centre line into a road, curbs, walls, boost pads and ramps, plus side roads
+  (shortcuts and split paths) that leave the loop and rejoin it
 - `src/tracks/castle.js` – Castle Cloverleaf layout and scenery
 - `src/kart.js` – the kart model, drift sparks, boost flames and item effects (shield, spin-outs)
 - `src/items.js` – item boxes, item odds by race position, rockets, oil slicks and hit detection

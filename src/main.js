@@ -6,6 +6,7 @@ import { createKartState, stepKart, respawn, driftLevel, raceProgress, TUNING } 
 import { Room, MAX_PLAYERS, KART_COLORS, packState, unpackState } from './net.js';
 import { buildCastleTrack } from './tracks/castle.js';
 import { buildSpaceTrack } from './tracks/space.js';
+import { buildCaveTrack } from './tracks/cave.js';
 import { skyTexture, starSkyTexture, toonGradient } from './textures.js';
 import { Coins, ITEMS, ITEM_IDS, ItemBoxes, ItemDirector, ItemWorld, rollItem } from './items.js';
 
@@ -53,8 +54,9 @@ const audio = new Audio();
 const TRACKS = {
   castle: { name: 'Castle Cloverleaf', build: buildCastleTrack },
   space: { name: 'Star Station', build: buildSpaceTrack },
+  cave: { name: 'Crystal Caverns', build: buildCaveTrack },
 };
-const skies = { day: skyTexture(), stars: starSkyTexture() };
+const skies = { day: skyTexture(), stars: starSkyTexture(), cave: new THREE.Color('#0c0814') };
 let levelId = null;
 let level, track, boxes, world, coins, startLights, wavers, spinners, blinkers, clouds;
 let director = new ItemDirector();
@@ -1113,6 +1115,7 @@ function frame(now) {
   coins.update(elapsed, dt);
   for (const w of wavers) w.rotation.y = Math.sin(elapsed * 3 + w.id) * 0.25;
   for (const o of spinners) o.rotation.z = elapsed * o.userData.spin;
+  level.update?.(elapsed);
   for (const o of blinkers) o.visible = Math.sin(elapsed * 6 + o.userData.blink) > -0.3;
   if (clouds) clouds.rotation.y = elapsed * 0.004;
 

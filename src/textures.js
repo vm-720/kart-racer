@@ -272,3 +272,58 @@ export function starSkyTexture() {
   tex.mapping = THREE.EquirectangularReflectionMapping;
   return tex;
 }
+
+// Packed dark stone for the cave road, with faint glowing lane marks.
+export function caveRoadTexture({ lines = true } = {}) {
+  return canvasTexture(512, (ctx, s) => {
+    ctx.fillStyle = '#4a4258';
+    ctx.fillRect(0, 0, s, s);
+    speckle(ctx, s, 9000, ['#423b50', '#544c63', '#3c3549', '#5d5570'], 2.5);
+    if (!lines) return;
+    ctx.fillStyle = 'rgba(160, 230, 255, 0.75)';
+    for (let y = 0; y < s; y += 128) ctx.fillRect(s / 2 - 5, y + 20, 10, 64);
+    ctx.fillStyle = 'rgba(214, 200, 255, 0.85)';
+    ctx.fillRect(14, 0, 8, s);
+    ctx.fillRect(s - 22, 0, 8, s);
+  });
+}
+
+// Loose gravel beside the cave road.
+export function gravelTexture() {
+  return canvasTexture(256, (ctx, s) => {
+    ctx.fillStyle = '#3b3446';
+    ctx.fillRect(0, 0, s, s);
+    speckle(ctx, s, 5000, ['#2f2939', '#4a4257', '#554c63', '#29232f'], 3.5);
+  });
+}
+
+// Rough cave rock for walls, tunnel ceilings and the cavern floor.
+export function rockTexture() {
+  return canvasTexture(256, (ctx, s) => {
+    ctx.fillStyle = '#4d4459';
+    ctx.fillRect(0, 0, s, s);
+    for (let i = 0; i < 60; i++) {
+      const shade = 60 + Math.random() * 30;
+      ctx.fillStyle = `rgba(${shade}, ${shade - 8}, ${shade + 14}, 0.7)`;
+      ctx.beginPath();
+      ctx.ellipse(Math.random() * s, Math.random() * s, 10 + Math.random() * 30, 6 + Math.random() * 16, Math.random() * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    speckle(ctx, s, 2500, ['#3a3245', '#5f566c', '#332c3c'], 2.5);
+  });
+}
+
+// Bubbling lava with bright cracks.
+export function lavaTexture() {
+  return canvasTexture(256, (ctx, s) => {
+    ctx.fillStyle = '#d2400f';
+    ctx.fillRect(0, 0, s, s);
+    for (let i = 0; i < 70; i++) {
+      ctx.fillStyle = ['#ff7a1a', '#ffb02e', '#a82a0a'][i % 3];
+      ctx.beginPath();
+      ctx.arc(Math.random() * s, Math.random() * s, 4 + Math.random() * 18, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    speckle(ctx, s, 800, ['#ffe066', '#ff9a2e'], 3);
+  });
+}

@@ -5,7 +5,8 @@ import { KartView } from './kart.js';
 import { createKartState, stepKart, respawn, driftLevel, raceProgress, TUNING } from './physics.js';
 import { Room, MAX_PLAYERS, KART_COLORS, packState, unpackState } from './net.js';
 import { buildCastleTrack } from './tracks/castle.js';
-import { skyTexture, toonGradient } from './textures.js';
+import { buildSpaceTrack } from './tracks/space.js';
+import { skyTexture, starSkyTexture, toonGradient } from './textures.js';
 import { Coins, ITEMS, ITEM_IDS, ItemBoxes, ItemDirector, ItemWorld, rollItem } from './items.js';
 
 const PHYSICS_DT = 1 / 120;
@@ -30,7 +31,8 @@ const scene = new THREE.Scene();
 scene.background = skyTexture();
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.5, 2500);
 
-scene.add(new THREE.HemisphereLight('#cfe8ff', '#6a9a4a', 1.4));
+const hemi = new THREE.HemisphereLight('#cfe8ff', '#6a9a4a', 1.4);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight('#fff3dc', 2.4);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -44,24 +46,66 @@ const LIGHT_RIGHT = new THREE.Vector3(0, 1, 0).cross(LIGHT_DIR).normalize();
 const LIGHT_UP = LIGHT_DIR.clone().cross(LIGHT_RIGHT);
 
 const gradientMap = toonGradient();
-const level = buildCastleTrack(gradientMap);
-const track = level.track;
-scene.add(level.scene);
-scene.fog = new THREE.Fog(level.fog.color, level.fog.near, level.fog.far);
-
-const startLights = [0, 1, 2].map((i) => scene.getObjectByName(`start-light-${i}`));
-const wavers = [];
-scene.traverse((o) => o.userData.wave && wavers.push(o));
-const clouds = scene.getObjectByName('clouds');
-
 const input = new Input();
 const audio = new Audio();
 
-const boxes = new ItemBoxes(track, level.itemRows);
-const world = new ItemWorld(track);
-const coins = new Coins(track, level.coinLines || []);
-scene.add(boxes.group, world.group, coins.group);
+// --- Tracks -----------------------------------------------------------------------
+const TRACKS = {
+  castle: { name: 'Castle Cloverleaf', build: buildCastleTrack },
+  space: { name: 'Star Station', build: buildSpaceTrack },
+};
+const skies = { day: skyTexture(), stars: starSkyTexture() };
+let levelId = null;
+let level, track, boxes, world, coins, startLights, wavers, spinners, blinkers, clouds;
 let director = new ItemDirector();
+
+// Swaps in a track and everything that lives on it. Cheap enough to do between races.
+function loadLevel(id) {
+  if (!TRACKS[id]) id = 'castle';
+  if (id === levelId) return;
+  if (level) {
+    scene.remove(level.scene, boxes.group, world.group, coins.group);
+    world.clear();
+    level.scene.traverse((o) => {
+      o.geometry?.dispose();
+      for (const m of [o.material].flat()) {
+        m?.map?.dispose();
+        m?.dispose();
+      }
+    });
+  }
+  levelId = id;
+  level = TRACKS[id].build(gradientMap);
+  track = level.track;
+  scene.add(level.scene);
+  scene.background = skies[level.sky || 'day'];
+  scene.fog = new THREE.Fog(level.fog.color, level.fog.near, level.fog.far);
+  const [sky, ground, strength] = level.hemi || ['#cfe8ff', '#6a9a4a', 1.4];
+  hemi.color.set(sky);
+  hemi.groundColor.set(ground);
+  hemi.intensity = strength;
+  const [sunColor, sunStrength] = level.sun || ['#fff3dc', 2.4];
+  sun.color.set(sunColor);
+  sun.intensity = sunStrength;
+
+  startLights = [0, 1, 2].map((i) => level.scene.getObjectByName(`start-light-${i}`));
+  wavers = [];
+  spinners = [];
+  blinkers = [];
+  level.scene.traverse((o) => {
+    if (o.userData.wave) wavers.push(o);
+    if (o.userData.spin) spinners.push(o);
+    if (o.userData.blink != null) blinkers.push(o);
+  });
+  clouds = level.scene.getObjectByName('clouds');
+
+  boxes = new ItemBoxes(track, level.itemRows);
+  world = new ItemWorld(track);
+  coins = new Coins(track, level.coinLines || []);
+  scene.add(boxes.group, world.group, coins.group);
+  drawMapBase();
+  renderTrackPickers();
+}
 
 // Rear-view mirror: a second small camera looking backwards
 const mirrorCam = new THREE.PerspectiveCamera(55, 3, 0.5, 700);
@@ -221,6 +265,7 @@ function startSolo() {
   audio.start();
   mode = 'solo';
   clearRacers();
+  loadLevel(chosenTrack);
   resetRace(0);
   nowPlaying(audio.nextSong());
 }
@@ -241,6 +286,8 @@ function backToMenu(error) {
   phase = 'menu';
   history.replaceState(null, '', location.pathname + (new URLSearchParams(location.search).get('peer') ? `?peer=${new URLSearchParams(location.search).get('peer')}` : ''));
   $('join-invite').classList.add('hidden');
+  loadLevel(chosenTrack);
+  renderTrackPickers();
   showMenuError(error);
   showScreen('menu');
 }
@@ -284,7 +331,7 @@ function wireRoom(r) {
     syncRacers();
     renderLobby();
   })
-    .on('start', (players) => beginOnlineRace(players))
+    .on('start', (players, trackId) => beginOnlineRace(players, trackId))
     .on('state', (id, s) => receiveState(id, s))
     .on('finish', (id, time) => {
       const r2 = racers.get(id);
@@ -302,6 +349,7 @@ $('create-btn').addEventListener('click', () =>
     showMenuError('');
     try {
       wireRoom(await Room.host({ name: displayName(), color: profile.color }));
+      room.setTrack(chosenTrack);
       showLobby();
     } catch (err) {
       showMenuError(friendlyError(err));
@@ -369,6 +417,8 @@ function renderLobby() {
     list.appendChild(li);
   }
   $('race-btn').classList.toggle('hidden', !room.isHost);
+  if (room.track !== levelId) loadLevel(room.track);
+  renderTrackPickers();
   $('lobby-status').textContent = room.isHost
     ? players.length > 1 ? 'Everyone in? Start the race!' : 'You can start now or wait for friends.'
     : room.racing ? 'A race is running. You will join the next one.' : 'Waiting for the host to start the race…';
@@ -388,7 +438,8 @@ $('race-btn').addEventListener('click', () => room?.startRace());
 window.addEventListener('pagehide', () => room?.leave());
 $('leave-btn').addEventListener('click', () => backToMenu());
 
-function beginOnlineRace(players) {
+function beginOnlineRace(players, trackId) {
+  loadLevel(trackId);
   syncRacers(players);
   const me = players.find((p) => p.id === room.myId);
   if (me && me.color !== profile.color) {
@@ -787,10 +838,12 @@ function placeCamera(blend, s = kart) {
   const back = 7.5 + Math.min(2, Math.max(0, s.speed) / 15);
   const h = Math.sin(camHeading);
   const c = Math.cos(camHeading);
-  const target = new THREE.Vector3(s.x - h * back, s.ground + 3.3 + s.y * 0.9, s.z - c * back);
+  // When the kart falls off the track the camera stays at road height and watches it drop
+  const lift = Math.max(0, s.y) * 0.9;
+  const target = new THREE.Vector3(s.x - h * back, s.ground + 3.3 + lift, s.z - c * back);
   camPos.lerp(target, blend);
   camera.position.copy(camPos);
-  lookAt.set(s.x + h * 4, s.ground + 1.4 + s.y * 0.9, s.z + c * 4);
+  lookAt.set(s.x + h * 4, s.ground + 1.4 + Math.max(-12, s.y) * 0.9, s.z + c * 4);
   camera.lookAt(lookAt);
   const fov = 66 + (s.boost > 0 ? 10 : 0) + Math.max(0, s.speed) * 0.12;
   camera.fov += (fov - camera.fov) * Math.min(1, blend * 0.6);
@@ -837,7 +890,7 @@ function showCount(text) {
 const minimap = $('minimap').getContext('2d');
 const mapBase = document.createElement('canvas');
 let mapTransform;
-(function drawMapBase() {
+function drawMapBase() {
   const size = 180;
   mapBase.width = mapBase.height = size;
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -870,7 +923,7 @@ let mapTransform;
   const [sx, sy] = mapTransform(track.points[0].x, track.points[0].z);
   ctx.fillStyle = '#1d1b3a';
   ctx.fillRect(sx - 6, sy - 2, 12, 4);
-})();
+}
 
 function updateHud() {
   const lap = Math.min(Math.max(kart.lap, 1), track.laps);
@@ -1059,6 +1112,8 @@ function frame(now) {
   boxes.update(elapsed, dt);
   coins.update(elapsed, dt);
   for (const w of wavers) w.rotation.y = Math.sin(elapsed * 3 + w.id) * 0.25;
+  for (const o of spinners) o.rotation.z = elapsed * o.userData.spin;
+  for (const o of blinkers) o.visible = Math.sin(elapsed * 6 + o.userData.blink) > -0.3;
   if (clouds) clouds.rotation.y = elapsed * 0.004;
 
   // Move the shadow area with the kart in whole shadow-map texels (measured from the sun's
@@ -1109,6 +1164,46 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// --- Track picker ---------------------------------------------------------------------
+// Solo players pick freely; online, only the host picks and everyone else sees the choice.
+let chosenTrack = 'castle';
+try {
+  chosenTrack = localStorage.getItem('track') || 'castle';
+} catch {
+  /* storage unavailable */
+}
+function pickTrack(id) {
+  chosenTrack = id;
+  try {
+    localStorage.setItem('track', id);
+  } catch {
+    /* storage unavailable */
+  }
+  if (room?.isHost) room.setTrack(id);
+  loadLevel(id);
+}
+function renderTrackPickers() {
+  const current = room ? room.track : chosenTrack;
+  for (const el of document.querySelectorAll('.track-pick')) {
+    if (!el.children.length) {
+      for (const [id, t] of Object.entries(TRACKS)) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.dataset.track = id;
+        b.setAttribute('role', 'radio');
+        b.textContent = t.name;
+        b.addEventListener('click', () => pickTrack(id));
+        el.appendChild(b);
+      }
+    }
+    for (const b of el.children) {
+      b.setAttribute('aria-checked', String(b.dataset.track === current));
+      b.disabled = !!room && !room.isHost;
+    }
+  }
+}
+loadLevel(chosenTrack);
+
 kart = createKartState(track.gridSlot(0));
 kartView.color = profile.color;
 kartView.update(kart, 0, 0);
@@ -1123,6 +1218,7 @@ if (invite && /^[A-Za-z0-9]{5}$/.test(invite)) {
 requestAnimationFrame(frame);
 
 // Handy for debugging from the browser console.
-window.__game = { get kart() { return kart; }, get time() { return raceTime; }, camera, track, racers, audio, world, boxes, coins,
+window.__game = { get kart() { return kart; }, get time() { return raceTime; }, camera, get track() { return track; }, racers, audio,
+  get world() { return world; }, get boxes() { return boxes; }, get coins() { return coins; }, loadLevel,
   coinsHidden: () => coins.coins.filter((c) => c.respawn > 0).length,
   give(id) { held = id; heldUses = ITEMS[id].uses; renderItemSlot(); }, get room() { return room; } };

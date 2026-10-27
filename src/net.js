@@ -41,6 +41,7 @@ export class Room {
     this.conns = new Map(); // host only: peer id -> connection
     this.lastSeen = new Map(); // peer id -> time we last heard from them
     this.racing = false;
+    this.track = 'castle';
   }
 
   // Everyone pings every second, so a closed tab or dropped connection is noticed quickly.
@@ -175,7 +176,7 @@ export class Room {
   }
 
   #broadcastLobby() {
-    this.#relay({ t: 'lobby', players: this.players, racing: this.racing });
+    this.#relay({ t: 'lobby', players: this.players, racing: this.racing, track: this.track });
     this.#emit('players', this.players);
   }
 
@@ -186,8 +187,15 @@ export class Room {
   startRace() {
     if (!this.isHost) return;
     this.racing = true;
-    this.#relay({ t: 'start', players: this.players });
-    this.#emit('start', this.players);
+    this.#relay({ t: 'start', players: this.players, track: this.track });
+    this.#emit('start', this.players, this.track);
+  }
+
+  // The host picks the track; guests see the choice in the lobby.
+  setTrack(id) {
+    if (!this.isHost || this.racing) return;
+    this.track = id;
+    this.#broadcastLobby();
   }
 
   endRace() {
@@ -237,12 +245,14 @@ export class Room {
       case 'lobby':
         this.players = msg.players;
         this.racing = msg.racing;
+        if (msg.track) this.track = msg.track;
         this.#emit('players', this.players);
         break;
       case 'start':
         this.players = msg.players;
         this.racing = true;
-        this.#emit('start', this.players);
+        if (msg.track) this.track = msg.track;
+        this.#emit('start', this.players, this.track);
         break;
       case 'state':
         this.#emit('state', msg.id, msg.s);
@@ -323,7 +333,7 @@ function clean(name) {
 export function packState(s) {
   const flags =
     (s.drifting ? 1 : 0) | (s.driftDir > 0 ? 2 : 0) | (s.boost > 0 ? 4 : 0) | (s.grounded ? 8 : 0) |
-    (s.spin > 0 ? 16 : 0) | (s.shrink > 0 ? 32 : 0) | (s.shield > 0 ? 64 : 0) | (s.star > 0 ? 128 : 0) | (s.slip > 0 ? 256 : 0) | (s.trick > 0 ? 512 : 0);
+    (s.spin > 0 ? 16 : 0) | (s.shrink > 0 ? 32 : 0) | (s.shield > 0 ? 64 : 0) | (s.star > 0 ? 128 : 0) | (s.slip > 0 ? 256 : 0) | (s.trick > 0 ? 512 : 0) | (s.drone > 0 ? 1024 : 0);
   return [
     +s.x.toFixed(2), +s.z.toFixed(2), +s.y.toFixed(2), +s.ground.toFixed(2),
     +s.heading.toFixed(3), +s.speed.toFixed(1), flags, +s.driftCharge.toFixed(2), s.lap, s.trackIndex,
@@ -337,6 +347,6 @@ export function unpackState(a) {
     drifting: !!(a[6] & 1), driftDir: a[6] & 1 ? (a[6] & 2 ? 1 : -1) : 0,
     boost: a[6] & 4 ? 1 : 0, grounded: !!(a[6] & 8), driftCharge: a[7], lap: a[8], trackIndex: a[9],
     spin: a[6] & 16 ? 1 : 0, shrink: a[6] & 32 ? 1 : 0, shield: a[6] & 64 ? 1 : 0, star: a[6] & 128 ? 1 : 0,
-    slip: a[6] & 256 ? 1 : 0, trick: a[6] & 512 ? 1 : 0, offset: a[10] ?? 0,
+    slip: a[6] & 256 ? 1 : 0, trick: a[6] & 512 ? 1 : 0, drone: a[6] & 1024 ? 1 : 0, offset: a[10] ?? 0,
   };
 }

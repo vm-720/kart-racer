@@ -76,7 +76,7 @@ export class ItemDirector {
 
 // --- Mystery boxes -------------------------------------------------------------------
 const BOX_RESPAWN = 2;
-const BOX_SPACING = 4.2;
+const BOX_SPREAD = 0.45; // gap between the two boxes in a row, as a share of road width
 
 function boxTexture() {
   const c = document.createElement('canvas');
@@ -116,9 +116,9 @@ export class ItemBoxes {
     const N = track.sampleCount;
     for (const at of rows) {
       const i = Math.round(at * N) % N;
-      const across = Math.floor((track.width - 4) / BOX_SPACING);
-      for (let k = 0; k <= across; k++) {
-        const off = (k - across / 2) * BOX_SPACING;
+      // Two boxes per row, one on each half of the road
+      for (let k = 0; k < 2; k++) {
+        const off = (k - 0.5) * track.width * BOX_SPREAD;
         const p = track.point(i).clone().addScaledVector(track.sides[i], off);
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.set(p.x, p.y + 1.6, p.z);

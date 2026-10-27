@@ -521,19 +521,30 @@ class Branch {
     };
     const both = (off, margin) => (i) => onMain(i, off, margin) || onMain(i + 1, off, margin);
 
-    const roadMat =
-      this.surface === 'road'
-        ? new THREE.MeshLambertMaterial({ map: asphaltTexture(), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })
-        : new THREE.MeshLambertMaterial({ map: dirtTexture(), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-    const road = new THREE.Mesh(
-      ribbon(this, -this.halfWidth, this.halfWidth, 0.06, {
-        vScale: 1 / (this.halfWidth * 2),
-        skip: this.surface === 'road' ? null : both(0, main.halfWidth + CURB),
-      }),
-      roadMat,
-    );
-    road.receiveShadow = true;
-    group.add(road);
+    if (this.surface === 'road') {
+      // Where the side road overlaps the main road, draw plain asphalt underneath it so
+      // the lane lines don't cross; the side road's own lines start once it is clear.
+      const edgeOnMain = (i, off, margin) => onMain(i, off, margin) || onMain(i + 1, off, margin);
+      const touching = (i) => edgeOnMain(i, -this.halfWidth, main.halfWidth + CURB) || edgeOnMain(i, this.halfWidth, main.halfWidth + CURB);
+      const covered = (i) => edgeOnMain(i, -this.halfWidth, main.halfWidth) && edgeOnMain(i, this.halfWidth, main.halfWidth);
+      const lined = new THREE.Mesh(
+        ribbon(this, -this.halfWidth, this.halfWidth, 0.06, { vScale: 1 / (this.halfWidth * 2), skip: touching }),
+        new THREE.MeshLambertMaterial({ map: asphaltTexture() }),
+      );
+      const plain = new THREE.Mesh(
+        ribbon(this, -this.halfWidth, this.halfWidth, 0.03, { vScale: 1 / (this.halfWidth * 2), skip: (i) => !touching(i) || covered(i) }),
+        new THREE.MeshLambertMaterial({ map: asphaltTexture({ lines: false }) }),
+      );
+      lined.receiveShadow = plain.receiveShadow = true;
+      group.add(lined, plain);
+    } else {
+      const road = new THREE.Mesh(
+        ribbon(this, -this.halfWidth, this.halfWidth, 0.06, { vScale: 1 / (this.halfWidth * 2), skip: both(0, main.halfWidth + CURB) }),
+        new THREE.MeshLambertMaterial({ map: dirtTexture(), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+      );
+      road.receiveShadow = true;
+      group.add(road);
+    }
 
     if (this.surface === 'road') {
       const red = new THREE.Color('#e8433f');

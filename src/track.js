@@ -115,7 +115,7 @@ function edgePoint(path, i, off) {
 }
 
 export class Track {
-  // theme: { road, runoff (texture makers), curbs: [color, color], rails (glowing rails instead of stone walls),
+  // theme: { road, runoff, wall (texture makers), curbs: [color, color], rails (glowing rails instead of stone walls),
   //          floating (no ground: the track hangs in space) }
   // openEdges: [{ from, to, side }] lap fractions with no wall (side -1 left, 1 right, 0 both): you can fall off.
   // gaps: [{ from, to }] stretches with no road at all, to jump across. jumpPads: low-gravity bounce pads.
@@ -358,7 +358,7 @@ export class Track {
     const rails = this.theme.rails;
     const mat = rails
       ? new THREE.MeshBasicMaterial({ color: '#7fe3ff', transparent: true, opacity: 0.85, side: THREE.DoubleSide })
-      : new THREE.MeshLambertMaterial({ map: stoneTexture(), side: THREE.DoubleSide });
+      : new THREE.MeshLambertMaterial({ map: (this.theme.wall || stoneTexture)(), side: THREE.DoubleSide });
     for (const sign of [-1, 1]) {
       const off = sign * this.wallOffset;
       // Leave gaps where a side road leaves or joins, and along open edges
@@ -706,7 +706,7 @@ class Branch {
     const rails = main.theme.rails;
     const wallMat = rails
       ? new THREE.MeshBasicMaterial({ color: '#7fe3ff', transparent: true, opacity: 0.85, side: THREE.DoubleSide })
-      : new THREE.MeshLambertMaterial({ map: stoneTexture(), side: THREE.DoubleSide });
+      : new THREE.MeshLambertMaterial({ map: (main.theme.wall || stoneTexture)(), side: THREE.DoubleSide });
     const shape = rails ? { thickness: 0.35, base: main.wallHeight - 0.45 } : main.theme.floating ? { base: -1.6 } : {};
     for (const sign of [-1, 1]) {
       const off = sign * this.wallOffset;

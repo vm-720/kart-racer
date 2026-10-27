@@ -15,6 +15,7 @@ export class Input {
     this.touch = new Set();
     this.pressedOnce = new Set();
     this.steerSmooth = 0;
+    this.stickX = null; // touch joystick: -1 (full left) to 1 (full right), null when not touched
 
     window.addEventListener('keydown', (e) => {
       if (e.target instanceof HTMLInputElement && e.target.type !== 'range') return; // typing a name or room code
@@ -33,6 +34,7 @@ export class Input {
     const pad = document.getElementById('touch');
     if (!isTouch || !pad) return;
     this.touchUI = pad;
+    this.#bindStick(document.getElementById('stick'));
     for (const btn of pad.querySelectorAll('button')) {
       const key = btn.dataset.key;
       const on = (e) => {
@@ -53,7 +55,47 @@ export class Input {
     }
   }
 
+  // Steering joystick: drag the knob left or right. Only sideways movement counts.
+  #bindStick(stick) {
+    if (!stick) return;
+    const knob = stick.querySelector('.stick-knob');
+    let id = null;
+    const move = (e) => {
+      const r = stick.getBoundingClientRect();
+      const reach = r.width / 2;
+      let dx = e.clientX - (r.left + reach);
+      let dy = e.clientY - (r.top + reach);
+      const len = Math.hypot(dx, dy);
+      if (len > reach) {
+        dx *= reach / len;
+        dy *= reach / len;
+      }
+      knob.style.transform = `translate(${dx}px, ${dy}px)`;
+      const x = dx / reach;
+      // Small dead zone in the middle, then full range out to the edge
+      this.stickX = Math.abs(x) < 0.12 ? 0 : Math.sign(x) * Math.min(1, (Math.abs(x) - 0.12) / 0.75);
+    };
+    const end = (e) => {
+      if (e.pointerId !== id) return;
+      id = null;
+      this.stickX = null;
+      knob.style.transform = '';
+      stick.classList.remove('on');
+    };
+    stick.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      id = e.pointerId;
+      stick.setPointerCapture(id);
+      stick.classList.add('on');
+      move(e);
+    });
+    stick.addEventListener('pointermove', (e) => e.pointerId === id && move(e));
+    stick.addEventListener('pointerup', end);
+    stick.addEventListener('pointercancel', end);
+  }
+
   showTouch(show) {
+    if (!show && this.stickX !== null) this.stickX = null;
     if (this.touchUI) this.touchUI.classList.toggle('hidden', !show);
   }
 
@@ -76,6 +118,11 @@ export class Input {
     const tapped = KEYS.drift.filter((k) => this.consume(k)).length > 0;
     let drift = this.#held('drift') || tapped;
     let analog = false;
+
+    if (this.stickX !== null) {
+      steerTarget = this.stickX;
+      analog = true;
+    }
 
     const gp = navigator.getGamepads?.().find((g) => g && g.connected);
     if (gp) {

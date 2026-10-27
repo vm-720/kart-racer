@@ -120,6 +120,7 @@ const volumeSliders = [...document.querySelectorAll('.music-volume')];
 function setVolume(level, announce = false) {
   audio.setMusicVolume(level);
   for (const el of volumeSliders) el.value = Math.round(audio.musicLevel * 100);
+  for (const el of document.querySelectorAll('.volume-value')) el.textContent = `${Math.round(audio.musicLevel * 100)}%`;
   try {
     localStorage.setItem('music-volume', String(audio.musicLevel));
   } catch {
@@ -1001,7 +1002,8 @@ function frame(now) {
         startLights.forEach((l, i) => l?.material.color.set(n <= 0 ? '#3cff6a' : i < 3 - n + 1 ? '#ff3b30' : '#552222'));
       }
     }
-    if (phase === 'finished') controls = { throttle: 0, brake: 0.3, steer: 0, drift: false };
+    // Coast to a stop after the finish. Braking at a standstill would reverse the kart.
+    if (phase === 'finished') controls = { throttle: 0, brake: kart.speed > 0.5 ? 0.3 : 0, steer: 0, drift: false };
     if (phase === 'racing') {
       raceTime += dt;
       if (input.consume('KeyR')) respawn(kart, track);
@@ -1121,6 +1123,6 @@ if (invite && /^[A-Za-z0-9]{5}$/.test(invite)) {
 requestAnimationFrame(frame);
 
 // Handy for debugging from the browser console.
-window.__game = { get kart() { return kart; }, get time() { return raceTime; }, track, racers, audio, world, boxes, coins,
+window.__game = { get kart() { return kart; }, get time() { return raceTime; }, camera, track, racers, audio, world, boxes, coins,
   coinsHidden: () => coins.coins.filter((c) => c.respawn > 0).length,
   give(id) { held = id; heldUses = ITEMS[id].uses; renderItemSlot(); }, get room() { return room; } };

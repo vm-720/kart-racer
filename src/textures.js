@@ -30,11 +30,13 @@ export function toonGradient() {
   return tex;
 }
 
-export function asphaltTexture() {
+// lines: false gives plain asphalt, used where a side road blends into the main road
+export function asphaltTexture({ lines = true } = {}) {
   return canvasTexture(512, (ctx, s) => {
     ctx.fillStyle = '#5b5d6b';
     ctx.fillRect(0, 0, s, s);
     speckle(ctx, s, 9000, ['#525463', '#666879', '#6f7182', '#4c4e5c']);
+    if (!lines) return;
     // Dashed centre line
     ctx.fillStyle = 'rgba(255, 248, 231, 0.85)';
     for (let y = 0; y < s; y += 128) ctx.fillRect(s / 2 - 5, y + 20, 10, 64);

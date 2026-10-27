@@ -62,13 +62,10 @@ export function buildCastleTrack(gradientMap) {
     laps: 3,
     boostPads: [
       { near: new THREE.Vector3(40, 0, -220), offset: 0 },
-      { near: new THREE.Vector3(150, 0, -110), offset: -4 },
       { near: new THREE.Vector3(92, 0, 65), offset: 3 },
       { near: new THREE.Vector3(-236, 0, -40), offset: 4 },
     ],
     branches: [
-      // Dirt shortcut across the east hairpin: slower than the road unless you boost through it
-      { from: 350, to: 590, width: 9, runoff: 1, surface: 'dirt', bend: 0.45 },
       // Split path through the chicane: shorter, but narrow and full of barrels
       {
         from: 1800,
@@ -121,11 +118,10 @@ export function buildCastleTrack(gradientMap) {
   const coinLines = [
     { at: 0.105, offset: 5.5, count: 4 }, // up the side kicker
     { at: 0.27, offset: 7 },
-    { branch: 0, t: 0.25, count: 7 }, // the dirt shortcut
     { at: 0.47, offset: -7 },
     { at: 0.643, count: 5 }, // into the big jump
-    { branch: 1, t: 0.12, count: 4 },
-    { branch: 1, t: 0.82, count: 4 },
+    { branch: 0, t: 0.12, count: 4 },
+    { branch: 0, t: 0.82, count: 4 },
     { at: 0.85, offset: 6 },
     { at: 0.975, offset: -7 },
   ];

@@ -1,14 +1,14 @@
 // Sound: a synthesized engine hum and effect blips, plus the race soundtrack from public/music.
 
 const SONGS = ['aware', 'more', 'lights', 'legacy', 'hold', 'falling', 'drank'];
-const MUSIC_MAX = 0.7; // music volume at 100% on the slider
+const MUSIC_MAX = 0.9; // music volume at 100% on the slider
 
 export class Audio {
   constructor() {
     this.ctx = null;
     this.muted = false;
     this.music = new window.Audio();
-    this.setMusicVolume(0.5);
+    this.setMusicVolume(0.7);
     this.music.addEventListener('ended', () => this.nextSong());
     // Shuffle once so each session plays the songs in a fresh order
     this.playlist = [...SONGS].sort(() => Math.random() - 0.5);
@@ -50,12 +50,30 @@ export class Audio {
     this.engineFilter.connect(this.engineGain).connect(this.master);
     this.engine.start();
     this.engine2.start();
+
+    // Route the music through a gain node too. Some browsers (iPhone and iPad Safari)
+    // ignore an audio element's volume, so the slider only works reliably this way.
+    try {
+      this.musicGain = this.ctx.createGain();
+      this.ctx.createMediaElementSource(this.music).connect(this.musicGain).connect(this.ctx.destination);
+      this.setMusicVolume(this.musicLevel);
+    } catch {
+      this.musicGain = null;
+    }
   }
 
   // level runs from 0 (silent) to 1 (loudest)
   setMusicVolume(level) {
     this.musicLevel = Math.max(0, Math.min(1, level));
-    this.music.volume = this.musicLevel * MUSIC_MAX;
+    // Ears hear loudness on a curve, so square the level: each step of the slider
+    // then sounds like the same change, from silent at 0 to full at 100.
+    const gain = this.musicLevel * this.musicLevel * MUSIC_MAX;
+    if (this.musicGain) {
+      this.music.volume = 1;
+      this.musicGain.gain.value = gain;
+    } else {
+      this.music.volume = gain;
+    }
   }
 
   // The engine hum only plays while you're driving, not in menus or the lobby.
